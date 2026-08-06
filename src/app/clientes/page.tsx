@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Eye, Pencil, Plus, Search, Upload, UserRoundCheck, UserRoundPlus, UserRoundX } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { ClientActionsDrawer } from "@/components/client-actions-drawer";
 import { ClientDrawer } from "@/components/client-drawer";
 import { ClientImportDrawer } from "@/components/client-import-drawer";
 import { PageHeader } from "@/components/page-header";
@@ -13,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ClientStatus } from "@/lib/types";
 
 type Filter = "Todos" | "Ativos" | "Vencidos" | "Cancelados";
+type ActionMode = "view" | "edit";
 
 type DbSubscription = {
   dia_vencimento: number;
@@ -96,6 +98,9 @@ function mapClient(row: DbClient, today: string): UiClient {
 export default function ClientsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [actionOpen, setActionOpen] = useState(false);
+  const [actionMode, setActionMode] = useState<ActionMode>("view");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("Todos");
   const [clients, setClients] = useState<UiClient[]>([]);
@@ -146,6 +151,12 @@ export default function ClientsPage() {
     void loadClients();
   }, [loadClients]);
 
+  function openClient(clientId: string, mode: ActionMode) {
+    setSelectedClientId(clientId);
+    setActionMode(mode);
+    setActionOpen(true);
+  }
+
   const filtered = useMemo(() => clients.filter((client) => {
     const matchesQuery = `${client.name} ${client.phone ?? ""} ${client.email ?? ""}`.toLowerCase().includes(query.toLowerCase());
     const matchesFilter = filter === "Todos" || (filter === "Ativos" && client.status === "Ativo") || (filter === "Vencidos" && client.status === "Vencido") || (filter === "Cancelados" && client.status === "Cancelado");
@@ -182,10 +193,18 @@ export default function ClientsPage() {
       <section className="card">
         <div className="toolbar"><label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, telefone ou e-mail..." /></label><div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div></div>
         {error ? <div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div> : null}
-        {loading ? <div className="empty-note">Carregando clientes...</div> : filtered.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Plano</th><th>Créditos</th><th>Ciclo</th><th>Vencimento</th><th>Status</th><th>Último pagamento</th><th>Ações</th></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td><div className="client-cell"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{client.name}</div></td><td>{client.plan}</td><td>{client.credits}</td><td>{client.cycle}</td><td>{client.dueDay ? `Dia ${client.dueDay}` : "—"}</td><td><StatusBadge status={client.status} /></td><td>{client.lastPayment}</td><td><div className="action-set"><button className="square-action" aria-label="Visualizar"><Eye size={14} /></button><button className="square-action" aria-label="Editar"><Pencil size={14} /></button></div></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhum cliente encontrado.</div> : null}
+        {loading ? <div className="empty-note">Carregando clientes...</div> : filtered.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Plano</th><th>Créditos</th><th>Ciclo</th><th>Vencimento</th><th>Status</th><th>Último pagamento</th><th>Ações</th></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td><div className="client-cell"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{client.name}</div></td><td>{client.plan}</td><td>{client.credits}</td><td>{client.cycle}</td><td>{client.dueDay ? `Dia ${client.dueDay}` : "—"}</td><td><StatusBadge status={client.status} /></td><td>{client.lastPayment}</td><td><div className="action-set"><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhum cliente encontrado.</div> : null}
       </section>
       <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} empresaId={empresaId} onSaved={loadClients} />
       <ClientImportDrawer open={importOpen} onClose={() => setImportOpen(false)} empresaId={empresaId} onImported={loadClients} />
+      <ClientActionsDrawer
+        open={actionOpen}
+        mode={actionMode}
+        clientId={selectedClientId}
+        empresaId={empresaId}
+        onClose={() => { setActionOpen(false); setSelectedClientId(null); }}
+        onSaved={loadClients}
+      />
     </AppShell>
   );
 }
