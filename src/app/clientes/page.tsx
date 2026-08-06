@@ -7,6 +7,7 @@ import { ClientDrawer } from "@/components/client-drawer";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
+import { operationalChargeStatus, todayInSaoPaulo } from "@/lib/billing";
 import { createClient } from "@/lib/supabase/client";
 import type { ClientStatus } from "@/lib/types";
 
@@ -20,6 +21,7 @@ type DbSubscription = {
 
 type DbCharge = {
   status_pagamento: string;
+  vencimento: string;
   pago_em: string | null;
 };
 
@@ -52,9 +54,9 @@ function planName(subscription?: DbSubscription) {
   return Array.isArray(subscription.planos) ? subscription.planos[0]?.nome ?? "Sem plano" : subscription.planos.nome;
 }
 
-function mapClient(row: DbClient): UiClient {
+function mapClient(row: DbClient, today: string): UiClient {
   const activeSubscription = row.assinaturas?.find((item) => item.status === "ativa") ?? row.assinaturas?.[0];
-  const overdue = row.cobrancas?.some((charge) => charge.status_pagamento === "atrasado") ?? false;
+  const overdue = row.cobrancas?.some((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado") ?? false;
   const paidDates = (row.cobrancas ?? [])
     .filter((charge) => charge.pago_em)
     .map((charge) => charge.pago_em as string)
@@ -93,13 +95,14 @@ export default function ClientsPage() {
 
     try {
       const supabase = createClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) throw new Error("Sessão inválida. Entre novamente.");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new Error("Sessão inválida. Entre novamente.");
 
       const { data: membership, error: membershipError } = await supabase
         .from("usuarios_empresa")
         .select("empresa_id")
-        .eq("user_id", userData.user.id)
+        .eq("user_id", userId)
         .eq("ativo", true)
         .limit(1)
         .maybeSingle();
@@ -110,12 +113,14 @@ export default function ClientsPage() {
 
       const { data, error: clientsError } = await supabase
         .from("clientes")
-        .select("id,nome,telefone,email,status,criado_em,assinaturas(dia_vencimento,status,planos(nome)),cobrancas(status_pagamento,pago_em)")
+        .select("id,nome,telefone,email,status,criado_em,assinaturas(dia_vencimento,status,planos(nome)),cobrancas(status_pagamento,vencimento,pago_em)")
         .eq("empresa_id", membership.empresa_id)
-        .order("criado_em", { ascending: false });
+        .order("criado_em", { ascending: false })
+        .limit(500);
 
       if (clientsError) throw clientsError;
-      setClients(((data ?? []) as DbClient[]).map(mapClient));
+      const today = todayInSaoPaulo();
+      setClients(((data ?? []) as DbClient[]).map((row) => mapClient(row, today)));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar os clientes.");
     } finally {
@@ -154,9 +159,7 @@ export default function ClientsPage() {
       <section className="card">
         <div className="toolbar"><label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, telefone ou e-mail..." /></label><div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div></div>
         {error ? <div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div> : null}
-        <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Plano</th><th>Vencimento</th><th>Status</th><th>Último pagamento</th><th>Ações</th></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td><div className="client-cell"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{client.name}</div></td><td>{client.phone}</td><td>{client.plan}</td><td>{client.dueDay ? `Dia ${client.dueDay}` : "—"}</td><td><StatusBadge status={client.status} /></td><td>{client.lastPayment}</td><td><div className="action-set"><button className="square-action" aria-label="Visualizar"><Eye size={14} /></button><button className="square-action" aria-label="Editar"><Pencil size={14} /></button></div></td></tr>)}</tbody></table></div>
-        {loading ? <div className="empty-note">Carregando clientes...</div> : null}
-        {!loading && !error && filtered.length === 0 ? <div className="empty-note">Nenhum cliente encontrado.</div> : null}
+        {loading ? <div className="empty-note">Carregando clientes...</div> : filtered.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Plano</th><th>Vencimento</th><th>Status</th><th>Último pagamento</th><th>Ações</th></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td><div className="client-cell"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{client.name}</div></td><td>{client.phone}</td><td>{client.plan}</td><td>{client.dueDay ? `Dia ${client.dueDay}` : "—"}</td><td><StatusBadge status={client.status} /></td><td>{client.lastPayment}</td><td><div className="action-set"><button className="square-action" aria-label="Visualizar"><Eye size={14} /></button><button className="square-action" aria-label="Editar"><Pencil size={14} /></button></div></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhum cliente encontrado.</div> : null}
       </section>
       <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} empresaId={empresaId} onSaved={loadClients} />
     </AppShell>
