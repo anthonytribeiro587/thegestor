@@ -26,14 +26,7 @@ type ChargeRow = {
   pagamentos: { metodo: string | null; status: string }[] | null;
 };
 
-type QueueRow = {
-  tarefa_id: string;
-  tipo: string;
-  prioridade: string;
-  cliente_nome: string;
-  vencimento: string | null;
-  status_pagamento: string | null;
-};
+type QueueRow = { tarefa_id: string; tipo: string; prioridade: string; cliente_nome: string; vencimento: string | null; status_pagamento: string | null };
 
 type UiCharge = {
   id: string;
@@ -85,42 +78,21 @@ export default function ChargesPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
-
     try {
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (!userId) throw new Error("Sessão inválida. Entre novamente.");
 
-      const { data: membership, error: membershipError } = await supabase
-        .from("usuarios_empresa")
-        .select("empresa_id")
-        .eq("user_id", userId)
-        .eq("ativo", true)
-        .limit(1)
-        .maybeSingle();
-
+      const { data: membership, error: membershipError } = await supabase.from("usuarios_empresa").select("empresa_id").eq("user_id", userId).eq("ativo", true).limit(1).maybeSingle();
       if (membershipError) throw membershipError;
       if (!membership?.empresa_id) throw new Error("Usuário sem empresa vinculada.");
       setEmpresaId(membership.empresa_id);
 
       const [chargesResult, queueResult] = await Promise.all([
-        supabase
-          .from("cobrancas")
-          .select("id,vencimento,status_pagamento,pago_em,origem,clientes(nome),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(metodo,status)")
-          .eq("empresa_id", membership.empresa_id)
-          .neq("status_pagamento", "cancelado")
-          .order("vencimento", { ascending: false })
-          .limit(500),
-        supabase
-          .from("fila_operacional")
-          .select("tarefa_id,tipo,prioridade,cliente_nome,vencimento,status_pagamento")
-          .eq("empresa_id", membership.empresa_id)
-          .eq("status_tarefa", "pendente")
-          .order("criado_em", { ascending: true })
-          .limit(8),
+        supabase.from("cobrancas").select("id,vencimento,status_pagamento,pago_em,origem,clientes(nome),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(metodo,status)").eq("empresa_id", membership.empresa_id).neq("status_pagamento", "cancelado").order("vencimento", { ascending: false }).limit(500),
+        supabase.from("fila_operacional").select("tarefa_id,tipo,prioridade,cliente_nome,vencimento,status_pagamento").eq("empresa_id", membership.empresa_id).eq("status_tarefa", "pendente").order("criado_em", { ascending: true }).limit(8),
       ]);
-
       if (chargesResult.error) throw chargesResult.error;
       if (queueResult.error) throw queueResult.error;
 
@@ -145,7 +117,6 @@ export default function ChargesPage() {
           balance: Math.max(original - paid, 0),
         };
       });
-
       setCharges(mapped);
       setQueue((queueResult.data ?? []) as QueueRow[]);
     } catch (cause) {
@@ -155,28 +126,23 @@ export default function ChargesPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
 
-  const visible = useMemo(
-    () => charges.filter((charge) => {
-      const matchesTab = tab === "Todas" || charge.status === tab;
-      const matchesQuery = `${charge.client} ${charge.description}`.toLowerCase().includes(query.toLowerCase());
-      return matchesTab && matchesQuery;
-    }),
-    [charges, tab, query]
-  );
+  const visible = useMemo(() => charges.filter((charge) => {
+    const matchesTab = tab === "Todas" || charge.status === tab;
+    const matchesQuery = `${charge.client} ${charge.description}`.toLowerCase().includes(query.toLowerCase());
+    return matchesTab && matchesQuery;
+  }), [charges, tab, query]);
 
   const today = todayInSaoPaulo();
   const sevenDaysFromNow = new Date(`${today}T12:00:00Z`);
   sevenDaysFromNow.setUTCDate(sevenDaysFromNow.getUTCDate() + 7);
   const sevenDaysLimit = sevenDaysFromNow.toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);
-  const dueToday = charges.filter((charge) => charge.status !== "Pago" && charge.dueRaw === today).length;
-  const nextSevenDays = charges.filter((charge) => charge.status !== "Pago" && charge.status !== "Atrasado" && charge.dueRaw >= today && charge.dueRaw <= sevenDaysLimit).length;
-  const overdue = charges.filter((charge) => charge.status === "Atrasado").length;
-  const paidThisMonth = charges.filter((charge) => charge.status === "Pago" && charge.paidAt?.slice(0, 7) === currentMonth).length;
+  const dueToday = charges.filter((charge) => charge.balance > 0 && charge.dueRaw === today).length;
+  const nextSevenDays = charges.filter((charge) => charge.balance > 0 && charge.status !== "Atrasado" && charge.dueRaw >= today && charge.dueRaw <= sevenDaysLimit).length;
+  const overdue = charges.filter((charge) => charge.status === "Atrasado" && charge.balance > 0).length;
+  const paidThisMonth = charges.filter((charge) => charge.status === "Pago" && charge.value > 0 && charge.paidValue > 0 && charge.paidAt?.slice(0, 7) === currentMonth).length;
 
   return (
     <AppShell>
@@ -185,14 +151,11 @@ export default function ChargesPage() {
         <StatCard title="Vencem hoje" value={String(dueToday)} helper="Prioridade diária" icon={Clock3} />
         <StatCard title="Próximos 7 dias" value={String(nextSevenDays)} helper="Cobranças previstas" icon={CalendarDays} tone="green" />
         <StatCard title="Em atraso" value={String(overdue)} helper="Requer acompanhamento" icon={AlertTriangle} tone="orange" />
-        <StatCard title="Pagas no mês" value={String(paidThisMonth)} helper="Pagamentos confirmados" icon={CheckCircle2} tone="green" />
+        <StatCard title="Quitadas no mês" value={String(paidThisMonth)} helper="Com valor recebido" icon={CheckCircle2} tone="green" />
       </section>
       <section className="grid-dashboard">
         <div className="card">
-          <div className="toolbar">
-            <label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cobrança..." /></label>
-            <div className="toolbar-filters">{(["Todas", "A vencer", "Atrasado", "Parcial", "Pago"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}</div>
-          </div>
+          <div className="toolbar"><label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cobrança..." /></label><div className="toolbar-filters">{(["Todas", "A vencer", "Atrasado", "Parcial", "Pago"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}</div></div>
           {error ? <div className="empty-note">{error} <button className="text-link" onClick={() => void loadData()}>Tentar novamente</button></div> : null}
           {loading ? <div className="empty-note">Carregando cobranças...</div> : visible.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Descrição</th><th>Vencimento</th><th>Status</th><th>Forma de pagamento</th><th>Valor</th><th>Recebido</th><th>Saldo</th><th>Ação</th></tr></thead><tbody>{visible.map((charge) => <tr key={charge.id}><td>{charge.client}</td><td>{charge.description}</td><td>{charge.dueDate}</td><td>{charge.status === "Parcial" ? <span className="status-badge status-pendente">Parcial</span> : <StatusBadge status={charge.status} />}</td><td>{charge.paymentMethod}</td><td>{currency.format(charge.value)}</td><td>{currency.format(charge.paidValue)}</td><td>{currency.format(charge.balance)}</td><td><button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>Detalhes</button></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhuma cobrança encontrada.</div> : null}
         </div>
