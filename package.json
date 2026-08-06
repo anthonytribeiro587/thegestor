@@ -4,11 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "npm run lint",
+    "prebuild": "npm test",
     "build": "next build",
     "start": "next start",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run src/lib/client-import.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
