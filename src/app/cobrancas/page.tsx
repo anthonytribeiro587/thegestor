@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock3, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { ChargeActionsDrawer } from "@/components/charge-actions-drawer";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -11,7 +12,7 @@ import { formatDateBR, operationalChargeStatus, todayInSaoPaulo } from "@/lib/bi
 import { currency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 
-type Tab = "Todas" | "A vencer" | "Atrasado" | "Pago";
+type Tab = "Todas" | "A vencer" | "Atrasado" | "Parcial" | "Pago";
 
 type ChargeRow = {
   id: string;
@@ -44,6 +45,8 @@ type UiCharge = {
   status: Exclude<Tab, "Todas">;
   paymentMethod: string;
   value: number;
+  paidValue: number;
+  balance: number;
 };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
@@ -58,12 +61,14 @@ function description(row: ChargeRow) {
 }
 
 function paymentMethod(row: ChargeRow) {
-  const payment = row.pagamentos?.find((item) => item.status === "approved" || item.status === "pago") ?? row.pagamentos?.[0];
+  const payment = row.pagamentos?.find((item) => item.status === "approved" || item.status === "pago" || item.status === "parcial") ?? row.pagamentos?.[0];
   if (!payment?.metodo) return row.status_pagamento === "pago" ? "Manual" : "Aguardando pagamento";
   const method = payment.metodo.toLowerCase();
+  if (method === "importacao_planilha") return "Importado da planilha";
   if (method.includes("pix")) return "PIX";
   if (method.includes("credit") || method.includes("cart")) return "Cartão de crédito";
   if (method.includes("boleto")) return "Boleto bancário";
+  if (method === "manual") return "Manual";
   return payment.metodo;
 }
 
@@ -72,6 +77,8 @@ export default function ChargesPage() {
   const [query, setQuery] = useState("");
   const [charges, setCharges] = useState<UiCharge[]>([]);
   const [queue, setQueue] = useState<QueueRow[]>([]);
+  const [empresaId, setEmpresaId] = useState<string | null>(null);
+  const [selectedChargeId, setSelectedChargeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +102,7 @@ export default function ChargesPage() {
 
       if (membershipError) throw membershipError;
       if (!membership?.empresa_id) throw new Error("Usuário sem empresa vinculada.");
+      setEmpresaId(membership.empresa_id);
 
       const [chargesResult, queueResult] = await Promise.all([
         supabase
@@ -117,17 +125,26 @@ export default function ChargesPage() {
       if (queueResult.error) throw queueResult.error;
 
       const today = todayInSaoPaulo();
-      const mapped = ((chargesResult.data ?? []) as ChargeRow[]).map((row) => ({
-        id: row.id,
-        client: first(row.clientes)?.nome ?? "Cliente",
-        description: description(row),
-        dueDate: formatDateBR(row.vencimento),
-        dueRaw: row.vencimento,
-        paidAt: row.pago_em,
-        status: operationalChargeStatus(row.status_pagamento, row.vencimento, today),
-        paymentMethod: paymentMethod(row),
-        value: Number(first(row.cobrancas_financeiras)?.valor_pago ?? first(row.cobrancas_financeiras)?.valor_original ?? 0),
-      }));
+      const mapped = ((chargesResult.data ?? []) as ChargeRow[]).map((row) => {
+        const financial = first(row.cobrancas_financeiras);
+        const original = Number(financial?.valor_original ?? 0);
+        const paid = Number(financial?.valor_pago ?? 0);
+        const operational = operationalChargeStatus(row.status_pagamento, row.vencimento, today);
+        const status: UiCharge["status"] = row.status_pagamento !== "pago" && paid > 0 && paid < original ? "Parcial" : operational;
+        return {
+          id: row.id,
+          client: first(row.clientes)?.nome ?? "Cliente",
+          description: description(row),
+          dueDate: formatDateBR(row.vencimento),
+          dueRaw: row.vencimento,
+          paidAt: row.pago_em,
+          status,
+          paymentMethod: paymentMethod(row),
+          value: original,
+          paidValue: paid,
+          balance: Math.max(original - paid, 0),
+        };
+      });
 
       setCharges(mapped);
       setQueue((queueResult.data ?? []) as QueueRow[]);
@@ -156,8 +173,8 @@ export default function ChargesPage() {
   sevenDaysFromNow.setUTCDate(sevenDaysFromNow.getUTCDate() + 7);
   const sevenDaysLimit = sevenDaysFromNow.toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);
-  const dueToday = charges.filter((charge) => charge.status === "A vencer" && charge.dueRaw === today).length;
-  const nextSevenDays = charges.filter((charge) => charge.status === "A vencer" && charge.dueRaw >= today && charge.dueRaw <= sevenDaysLimit).length;
+  const dueToday = charges.filter((charge) => charge.status !== "Pago" && charge.dueRaw === today).length;
+  const nextSevenDays = charges.filter((charge) => charge.status !== "Pago" && charge.status !== "Atrasado" && charge.dueRaw >= today && charge.dueRaw <= sevenDaysLimit).length;
   const overdue = charges.filter((charge) => charge.status === "Atrasado").length;
   const paidThisMonth = charges.filter((charge) => charge.status === "Pago" && charge.paidAt?.slice(0, 7) === currentMonth).length;
 
@@ -174,16 +191,17 @@ export default function ChargesPage() {
         <div className="card">
           <div className="toolbar">
             <label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cobrança..." /></label>
-            <div className="toolbar-filters">{(["Todas", "A vencer", "Atrasado", "Pago"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}</div>
+            <div className="toolbar-filters">{(["Todas", "A vencer", "Atrasado", "Parcial", "Pago"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}</div>
           </div>
           {error ? <div className="empty-note">{error} <button className="text-link" onClick={() => void loadData()}>Tentar novamente</button></div> : null}
-          {loading ? <div className="empty-note">Carregando cobranças...</div> : visible.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Descrição</th><th>Vencimento</th><th>Status</th><th>Forma de pagamento</th><th>Valor</th><th>Ação</th></tr></thead><tbody>{visible.map((charge) => <tr key={charge.id}><td>{charge.client}</td><td>{charge.description}</td><td>{charge.dueDate}</td><td><StatusBadge status={charge.status} /></td><td>{charge.paymentMethod}</td><td>{currency.format(charge.value)}</td><td><button className="button ghost small">Detalhes</button></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhuma cobrança encontrada.</div> : null}
+          {loading ? <div className="empty-note">Carregando cobranças...</div> : visible.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Descrição</th><th>Vencimento</th><th>Status</th><th>Forma de pagamento</th><th>Valor</th><th>Recebido</th><th>Saldo</th><th>Ação</th></tr></thead><tbody>{visible.map((charge) => <tr key={charge.id}><td>{charge.client}</td><td>{charge.description}</td><td>{charge.dueDate}</td><td>{charge.status === "Parcial" ? <span className="status-badge status-pendente">Parcial</span> : <StatusBadge status={charge.status} />}</td><td>{charge.paymentMethod}</td><td>{currency.format(charge.value)}</td><td>{currency.format(charge.paidValue)}</td><td>{currency.format(charge.balance)}</td><td><button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>Detalhes</button></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhuma cobrança encontrada.</div> : null}
         </div>
         <aside className="card" style={{ alignSelf: "start" }}>
-          <div className="card-header"><h2>Fila operacional</h2></div>
+          <div className="card-header"><h2>Fila operacional</h2><Link href="/operador">Abrir painel</Link></div>
           {queue.length ? <div className="queue">{queue.map((item, index) => <div className="queue-item" key={item.tarefa_id}><div className={`queue-dot ${item.prioridade === "alta" ? "danger" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.tipo === "novo_cliente" ? "Ativar novo cliente" : item.tipo === "renovar" ? "Renovar cliente" : "Acompanhar cliente"}</b><small>{item.cliente_nome}{item.vencimento ? ` · ${formatDateBR(item.vencimento)}` : ""}</small></div><Link className="button ghost small" href="/operador">Abrir</Link></div>)}</div> : !loading ? <div className="empty-note">Nenhuma tarefa pendente.</div> : null}
         </aside>
       </section>
+      <ChargeActionsDrawer open={Boolean(selectedChargeId)} chargeId={selectedChargeId} empresaId={empresaId} onClose={() => setSelectedChargeId(null)} onSaved={loadData} />
     </AppShell>
   );
 }
