@@ -6,6 +6,7 @@ import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
+import { formatDateBR, operationalChargeStatus, todayInSaoPaulo } from "@/lib/billing";
 import { createClient } from "@/lib/supabase/client";
 
 type QueueRow = {
@@ -38,24 +39,10 @@ function first<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-function todayInSaoPaulo() {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
-}
-
 function paymentStatus(item: QueueRow, today: string) {
-  if (item.status_pagamento === "pago") return "Pago";
-  if (item.status_pagamento === "atrasado" || (item.status_pagamento === "pendente" && item.vencimento && item.vencimento < today)) return "Atrasado";
-  return "Pendente";
+  if (!item.vencimento) return item.status_pagamento === "pago" ? "Pago" : "Pendente";
+  const status = operationalChargeStatus(item.status_pagamento ?? "pendente", item.vencimento, today);
+  return status === "A vencer" ? "Pendente" : status;
 }
 
 function actionLabel(tipo: string) {
@@ -83,13 +70,14 @@ export default function OperatorPage() {
 
     try {
       const supabase = createClient();
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError || !userData.user) throw new Error("Sessão inválida. Entre novamente.");
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user.id;
+      if (!userId) throw new Error("Sessão inválida. Entre novamente.");
 
       const { data: membership, error: membershipError } = await supabase
         .from("usuarios_empresa")
         .select("empresa_id")
-        .eq("user_id", userData.user.id)
+        .eq("user_id", userId)
         .eq("ativo", true)
         .limit(1)
         .maybeSingle();
@@ -103,7 +91,8 @@ export default function OperatorPage() {
           .select("tarefa_id,empresa_id,tipo,status_tarefa,prioridade,cliente_id,cliente_nome,telefone,cliente_status,cobranca_id,vencimento,status_pagamento,pago_em,criado_em")
           .eq("empresa_id", membership.empresa_id)
           .eq("status_tarefa", "pendente")
-          .order("criado_em", { ascending: true }),
+          .order("criado_em", { ascending: true })
+          .limit(200),
         supabase
           .from("tarefas_operacionais")
           .select("id,tipo,status,atualizado_em,clientes(nome)")
@@ -171,14 +160,11 @@ export default function OperatorPage() {
       <section className="grid-dashboard">
         <div className="card">
           <div className="card-header"><h2>Cobranças e renovações</h2><span className="text-link">Sem valores financeiros</span></div>
-          <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Status do pagamento</th><th>Tarefa</th><th>Ação</th></tr></thead><tbody>{queue.map((item) => <tr key={item.tarefa_id}><td><div className="client-cell"><span className="mini-avatar">{item.cliente_nome.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{item.cliente_nome}</div></td><td>{item.telefone}</td><td>{formatDate(item.vencimento)}</td><td><StatusBadge status={paymentStatus(item, today)} /></td><td>{taskLabel(item.tipo)}</td><td><button className="button ghost small" disabled={savingId === item.tarefa_id} onClick={() => void completeTask(item.tarefa_id, item.tipo)}>{savingId === item.tarefa_id ? "Salvando..." : actionLabel(item.tipo)}</button></td></tr>)}</tbody></table></div>
-          {loading ? <div className="empty-note">Carregando fila...</div> : null}
-          {!loading && queue.length === 0 ? <div className="empty-note">Nenhuma tarefa operacional pendente.</div> : null}
+          {loading ? <div className="empty-note">Carregando fila...</div> : queue.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Status do pagamento</th><th>Tarefa</th><th>Ação</th></tr></thead><tbody>{queue.map((item) => <tr key={item.tarefa_id}><td><div className="client-cell"><span className="mini-avatar">{item.cliente_nome.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{item.cliente_nome}</div></td><td>{item.telefone}</td><td>{item.vencimento ? formatDateBR(item.vencimento) : "—"}</td><td><StatusBadge status={paymentStatus(item, today)} /></td><td>{taskLabel(item.tipo)}</td><td><button className="button ghost small" disabled={savingId === item.tarefa_id} onClick={() => void completeTask(item.tarefa_id, item.tipo)}>{savingId === item.tarefa_id ? "Salvando..." : actionLabel(item.tipo)}</button></td></tr>)}</tbody></table></div> : <div className="empty-note">Nenhuma tarefa operacional pendente.</div>}
         </div>
         <aside className="card" style={{ alignSelf: "start" }}>
           <div className="card-header"><h2>Últimas atividades</h2></div>
-          <div className="queue">{activities.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${item.status === "concluida" ? "success" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.status === "concluida" ? "Tarefa concluída" : taskLabel(item.tipo)}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div></div>)}</div>
-          {!loading && activities.length === 0 ? <div className="empty-note">Nenhuma atividade registrada.</div> : null}
+          {activities.length ? <div className="queue">{activities.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${item.status === "concluida" ? "success" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.status === "concluida" ? "Tarefa concluída" : taskLabel(item.tipo)}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div></div>)}</div> : !loading ? <div className="empty-note">Nenhuma atividade registrada.</div> : null}
         </aside>
       </section>
     </AppShell>
