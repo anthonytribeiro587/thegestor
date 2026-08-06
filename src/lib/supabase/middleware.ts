@@ -56,13 +56,13 @@ export async function updateSession(request: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  const isAdminOnly = ADMIN_ONLY_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
-  if (membership?.papel === "operador" && isAdminOnly) {
-    return redirectWithCookies(request, response, "/operador");
+  if (!membership) {
+    return redirectWithCookies(request, response, "/login?erro=Usuário+sem+empresa+vinculada");
   }
 
-  if (!membership && request.nextUrl.pathname !== "/dashboard") {
-    return redirectWithCookies(request, response, "/dashboard");
+  const isAdminOnly = ADMIN_ONLY_PREFIXES.some((prefix) => request.nextUrl.pathname.startsWith(prefix));
+  if (membership.papel === "operador" && isAdminOnly) {
+    return redirectWithCookies(request, response, "/operador");
   }
 
   return response;
