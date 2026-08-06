@@ -65,7 +65,7 @@ export async function loginAction(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    redirect("/login?erro=E-mail+ou+senha+inválidos");
+    redirect("/login?erro=E-mail+ou+senha+inválidos.+Se+acabou+de+criar+a+conta,+confirme+o+e-mail+primeiro");
   }
 
   const membership = await ensureCompanyForCurrentUser();
@@ -112,6 +112,17 @@ export async function registerAction(formData: FormData) {
     redirect(`/cadastro?erro=${encodeURIComponent(error.message)}`);
   }
 
+  // Com confirmação de e-mail habilitada, o Supabase pode retornar uma resposta
+  // neutra para um e-mail já existente. identities vazio identifica esse caso
+  // sem tratar a segunda tentativa como uma nova conta válida.
+  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    redirect("/login?erro=Este+e-mail+já+está+cadastrado.+Confirme+o+e-mail+recebido+ou+entre+na+sua+conta");
+  }
+
+  if (!data.user) {
+    redirect("/cadastro?erro=Não+foi+possível+criar+a+conta.+Tente+novamente");
+  }
+
   if (data.session) {
     const membership = await ensureCompanyForCurrentUser();
     if (!membership) {
@@ -121,7 +132,7 @@ export async function registerAction(formData: FormData) {
     redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
   }
 
-  redirect("/login?sucesso=Conta+criada.+Confirme+seu+e-mail+e+depois+entre");
+  redirect("/login?sucesso=Conta+criada.+Enviamos+um+e-mail+de+confirmação.+Confirme+o+endereço+e+depois+entre");
 }
 
 export async function logoutAction() {
