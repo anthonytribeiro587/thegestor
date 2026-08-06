@@ -19,18 +19,37 @@ type AuthUserInput = {
   user_metadata?: Record<string, unknown>;
 };
 
-async function ensureCompanyForUser(user: AuthUserInput) {
+async function findActiveMembership(userId: string) {
   const supabase = await createClient();
-
-  const { data: existing } = await supabase
+  const { data } = await supabase
     .from("usuarios_empresa")
     .select("empresa_id, papel")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("ativo", true)
     .limit(1)
     .maybeSingle();
+  return data;
+}
 
+async function ensureCompanyForUser(user: AuthUserInput) {
+  const supabase = await createClient();
+
+  const existing = await findActiveMembership(user.id);
   if (existing) return existing;
+
+  // Antes de criar uma empresa nova, tenta aceitar um convite pendente
+  // para o mesmo e-mail autenticado. A RPC valida o e-mail dentro do Auth.
+  const { data: inviteResult, error: inviteError } = await supabase.rpc("aceitar_convite_pendente");
+
+  if (!inviteError && inviteResult && typeof inviteResult === "object" && "aceito" in inviteResult && inviteResult.aceito === true) {
+    const invitedMembership = await findActiveMembership(user.id);
+    if (invitedMembership) return invitedMembership;
+  }
+
+  // Compatibilidade enquanto a migration de convites ainda não tiver sido aplicada.
+  if (inviteError && !inviteError.message.toLowerCase().includes("function")) {
+    console.error("Falha ao verificar convite pendente:", inviteError.message);
+  }
 
   const metadata = user.user_metadata ?? {};
   const companyName = typeof metadata.company_name === "string" && metadata.company_name.trim()
@@ -51,15 +70,7 @@ async function ensureCompanyForUser(user: AuthUserInput) {
     return null;
   }
 
-  const { data: created } = await supabase
-    .from("usuarios_empresa")
-    .select("empresa_id, papel")
-    .eq("user_id", user.id)
-    .eq("ativo", true)
-    .limit(1)
-    .maybeSingle();
-
-  return created;
+  return findActiveMembership(user.id);
 }
 
 export async function loginAction(
@@ -85,7 +96,7 @@ export async function loginAction(
   const membership = await ensureCompanyForUser(data.user);
   if (!membership) {
     await supabase.auth.signOut();
-    return { status: "error", message: "Não foi possível preparar sua empresa. Tente novamente." };
+    return { status: "error", message: "Não foi possível preparar seu acesso. Tente novamente." };
   }
 
   redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
@@ -137,7 +148,7 @@ export async function registerAction(
     const membership = await ensureCompanyForUser(data.user);
     if (!membership) {
       await supabase.auth.signOut();
-      return { status: "error", message: "Conta criada, mas a empresa não pôde ser preparada." };
+      return { status: "error", message: "Conta criada, mas o acesso não pôde ser preparado." };
     }
     redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
   }
