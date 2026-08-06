@@ -4,24 +4,30 @@ SaaS administrativo para gestão de clientes, cobranças recorrentes e operaçã
 
 ## Estado atual
 
-A aplicação já está conectada ao Supabase e publicada na Vercel.
+A aplicação está conectada ao Supabase e publicada na Vercel, com dados reais e RLS por perfil.
 
 ### Implementado
 
 - Autenticação Supabase por e-mail e senha.
 - Criação automática da empresa e do primeiro administrador.
 - Banco multiempresa com RLS.
+- Administrador e operador com acessos reais.
+- Convites internos e vínculo automático de usuários à empresa.
 - Separação física dos dados financeiros para impedir acesso do operador.
-- Dashboard com dados reais.
-- Clientes com cadastro real de cliente + plano + assinatura + primeira cobrança.
-- Cobranças com dados reais e classificação de vencimento.
-- Fila operacional real.
-- Perfil operador sem valores financeiros.
+- Dashboard, clientes, cobranças e fila operacional com dados reais.
+- Cadastro manual de cliente + assinatura + cobrança.
+- Telefone opcional.
+- Importação administrativa de planilha XLSX sem versionar dados de clientes.
+- Normalização de observações e progresso de mensalidades, como `2/3`.
+- Controle de créditos utilizados e previstos.
+- Custo médio por crédito configurável, com padrão de R$ 8,00.
+- Projeção mensal de custo dos créditos no Dashboard.
+- Ao concluir renovação, créditos previstos passam para utilizados de forma atômica.
+- Operador pode ver quantidade de créditos da tarefa, mas nunca valores financeiros.
 - Auditoria básica.
-- Estrutura de integrações Mercado Pago / WhatsApp.
+- Estrutura preparada para Mercado Pago e WhatsApp/Evolution.
 - Layout responsivo desktop, tablet e mobile.
-- Loading states por rota.
-- Testes unitários executados automaticamente antes de cada build.
+- Testes e TypeScript executados automaticamente antes de cada build.
 
 ## Stack
 
@@ -34,108 +40,79 @@ A aplicação já está conectada ao Supabase e publicada na Vercel.
 
 ## Qualidade
 
-O comando de build executa primeiro validação de TypeScript e testes:
-
-```bash
-npm run build
-```
-
-Fluxo executado automaticamente:
+`npm run build` executa:
 
 1. `npm run lint` (`tsc --noEmit`)
 2. `npm test` (`vitest run`)
 3. `next build`
 
-Isso faz o deploy falhar antes da publicação caso tipos ou regras unitárias quebrem.
+O deploy é bloqueado caso tipos ou regras testadas quebrem.
+
+## Importação de clientes
+
+O importador aceita `.xlsx`, lê o arquivo temporariamente no servidor e não salva a planilha no repositório. Antes da gravação, mostra uma prévia com clientes, créditos utilizados/previstos, valores negociados, pagos e a receber.
+
+A importação atual reconhece:
+
+- `2/3`, `3/3` etc. como progresso de mensalidades;
+- observações entre parênteses;
+- anotações como `Até 10/08`;
+- clientes sem telefone;
+- créditos utilizados e previstos separados do status de pagamento.
 
 ## Roadmap
 
-### Fase 1 — Base operacional
+### Base operacional
 
 - [x] Auth e empresa.
 - [x] RLS admin/operador.
-- [x] Clientes reais.
-- [x] Cobranças reais.
-- [x] Dashboard real.
-- [x] Fila operacional.
-- [x] Operador sem valores.
-- [ ] Editar, cancelar e reativar clientes.
+- [x] Clientes, cobranças e Dashboard reais.
+- [x] Usuários e convites reais.
+- [x] Fila operacional sem financeiro.
+- [x] Créditos e custo médio por crédito.
+- [x] Importação XLSX.
+- [ ] Visualizar/editar/cancelar/reativar clientes.
 - [ ] Gestão própria de planos e preços.
-- [ ] Paginação server-side para clientes e cobranças.
+- [ ] Paginação server-side.
 
-### Fase 2 — Usuários e operação
-
-- [ ] Convite de operador por e-mail.
-- [ ] Ativar/desativar usuários.
-- [ ] Tela de permissões real.
-- [ ] Histórico completo por cliente.
-- [ ] Auditoria de alterações administrativas.
-- [ ] Busca global funcional.
-
-### Fase 3 — Mercado Pago
+### Mercado Pago
 
 - [ ] Conectar conta Mercado Pago.
-- [ ] Gerar cobrança PIX individual por cliente/cobrança.
-- [ ] `external_reference` vinculado à cobrança do thegestor.
-- [ ] Assinatura e validação de webhook.
-- [ ] Idempotência para eventos repetidos.
-- [ ] Baixa automática quando pagamento for aprovado.
-- [ ] Reconciliação para pagamentos que não chegaram por webhook.
-- [ ] Link público de pagamento para novos clientes.
+- [ ] Gerar PIX individual por cobrança.
+- [ ] `external_reference` vinculado à cobrança.
+- [ ] Webhook assinado e idempotente.
+- [ ] Baixa automática do pagamento.
+- [ ] Reconciliação de pagamentos.
+- [ ] Link público para novos clientes.
 
-### Fase 4 — Automação de cobranças
+### Automação de cobranças
 
 - [ ] Gerar próximas cobranças automaticamente.
 - [ ] Atualizar vencidas de forma agendada.
-- [ ] Lembrete antes do vencimento.
-- [ ] Aviso no dia do vencimento.
-- [ ] Cobrança após atraso.
-- [ ] Parar mensagens automaticamente após pagamento.
-- [ ] Configuração de dias/horários por empresa.
+- [ ] Lembrete antes/no/após vencimento.
+- [ ] Parar cobrança automaticamente após pagamento.
 
-### Fase 5 — WhatsApp
+### WhatsApp
 
 - [ ] Conectar Evolution API por instância.
-- [ ] QR/status da conexão no painel.
-- [ ] Templates de mensagens.
-- [ ] Envio automático associado à cobrança.
-- [ ] Histórico e status das mensagens.
-- [ ] Retentativa controlada e limites de envio.
-- [ ] Camada desacoplada para futura migração à WhatsApp Cloud API.
+- [ ] QR/status da conexão.
+- [ ] Templates e histórico de mensagens.
+- [ ] Retentativas controladas.
+- [ ] Camada desacoplada para futura Cloud API.
 
-### Fase 6 — Painel do operador
+### Qualidade e segurança
 
-- [x] Visualização sem valores financeiros.
-- [x] Fila de renovação/ativação.
-- [x] Concluir tarefa operacional.
-- [ ] Filtros por prioridade e vencimento.
-- [ ] Observações e histórico de execução.
-- [ ] Indicador de novo cliente pago.
-- [ ] SLA/tempo em fila.
-
-### Fase 7 — Relatórios e gestão
-
-- [ ] Recebimentos por período.
-- [ ] Inadimplência.
-- [ ] Clientes ativos/cancelados.
-- [ ] Novos clientes.
-- [ ] Exportação CSV/Excel.
-- [ ] Indicadores operacionais sem expor financeiro a operadores.
-
-### Fase 8 — Qualidade e segurança
-
-- [x] Unit tests das regras de Auth e cobrança.
+- [x] Testes unitários de Auth, cobrança, importação e XLSX.
 - [x] TypeScript obrigatório antes do build.
 - [ ] Testes de integração Supabase/RLS.
-- [ ] Testes E2E de cadastro → cobrança → pagamento → renovação.
+- [ ] E2E cliente → cobrança → pagamento → renovação.
 - [ ] Testes de webhook Mercado Pago.
-- [ ] Rate limiting nas rotas públicas.
-- [ ] Observabilidade e captura de erros.
-- [ ] Paginação e índices revisados com volume real.
+- [ ] Rate limiting e observabilidade.
 
 ## Segurança
 
-- Credenciais nunca são gravadas no front-end ou versionadas.
+- Credenciais nunca são versionadas.
 - O operador não recebe colunas financeiras pela Data API.
-- Todas as tabelas de negócio usam RLS.
-- Integrações devem guardar segredos apenas em ambiente de servidor/Vault.
+- RLS protege as tabelas de negócio.
+- A planilha de clientes não é armazenada no GitHub.
+- Integrações devem guardar segredos apenas no servidor/Vault.
