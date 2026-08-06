@@ -97,7 +97,7 @@ export function parseClientSpreadsheetRows(rows: Cell[][]): ImportSummary {
     notes: "obs",
     creditsUsed: "creditos",
     creditsExpected: "creditosprevistos",
-    negotiated: "valorenegociado",
+    negotiated: "valornegociado",
     paid: "valorpago",
     receivable: "valorareceber",
   } as const;
