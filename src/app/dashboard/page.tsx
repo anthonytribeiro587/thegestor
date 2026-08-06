@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, UserRoundCheck, UserRoundX, Users } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Coins, UserRoundCheck, UserRoundX, Users } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -21,6 +21,10 @@ type QueueRow = {
   tipo: string;
   prioridade: string;
   clientes: { nome: string } | { nome: string }[] | null;
+};
+type CreditRow = {
+  creditos_utilizados: number | null;
+  creditos_previstos: number | null;
 };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
@@ -52,9 +56,11 @@ export default async function DashboardPage() {
   let openCharges: ChargeRow[] = [];
   let paidThisMonth: ChargeRow[] = [];
   let queue: QueueRow[] = [];
+  let creditRows: CreditRow[] = [];
+  let creditCost = 8;
 
   if (empresaId) {
-    const [activeResult, cancelledResult, openResult, paidResult, queueResult] = await Promise.all([
+    const [activeResult, cancelledResult, openResult, paidResult, queueResult, creditsResult, configResult] = await Promise.all([
       supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "ativo"),
       supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "cancelado"),
       supabase
@@ -77,6 +83,18 @@ export default async function DashboardPage() {
         .eq("status", "pendente")
         .order("criado_em", { ascending: true })
         .limit(5),
+      supabase
+        .from("cobrancas")
+        .select("creditos_utilizados,creditos_previstos")
+        .eq("empresa_id", empresaId)
+        .gte("competencia", firstDay)
+        .lt("competencia", nextMonth)
+        .neq("status_pagamento", "cancelado"),
+      supabase
+        .from("configuracoes_empresa")
+        .select("custo_medio_credito")
+        .eq("empresa_id", empresaId)
+        .maybeSingle(),
     ]);
 
     activeClients = activeResult.count ?? 0;
@@ -84,6 +102,8 @@ export default async function DashboardPage() {
     openCharges = (openResult.data ?? []) as ChargeRow[];
     paidThisMonth = (paidResult.data ?? []) as ChargeRow[];
     queue = (queueResult.data ?? []) as QueueRow[];
+    creditRows = (creditsResult.data ?? []) as CreditRow[];
+    creditCost = Number(configResult.data?.custo_medio_credito ?? 8);
   }
 
   const overdue = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado");
@@ -95,6 +115,13 @@ export default async function DashboardPage() {
     return sum + Number(financial?.valor_pago ?? financial?.valor_original ?? 0);
   }, 0);
   const pendingAmount = openCharges.reduce((sum, charge) => sum + Number(first(charge.cobrancas_financeiras)?.valor_original ?? 0), 0);
+
+  const creditsUsed = creditRows.reduce((sum, row) => sum + Number(row.creditos_utilizados ?? 0), 0);
+  const creditsExpected = creditRows.reduce((sum, row) => sum + Number(row.creditos_previstos ?? 0), 0);
+  const projectedCredits = creditsUsed + creditsExpected;
+  const usedCreditCost = creditsUsed * creditCost;
+  const expectedCreditCost = creditsExpected * creditCost;
+  const projectedCreditCost = projectedCredits * creditCost;
 
   return (
     <AppShell>
@@ -120,7 +147,24 @@ export default async function DashboardPage() {
           <div className="card-header"><h2>Fila operacional</h2><Link href="/operador">Abrir painel</Link></div>
           {queue.length ? <div className="queue">{queue.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${item.prioridade === "alta" ? "danger" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.tipo === "novo_cliente" ? "Ativar novo cliente" : item.tipo === "renovar" ? "Renovar cliente" : "Acompanhar cliente"}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div><Link className="button ghost small" href="/operador">Abrir</Link></div>)}</div> : <div className="empty-note">Nenhuma tarefa operacional pendente.</div>}
         </div>
-        <div className="card"><div className="card-header"><h2>Indicadores financeiros</h2></div><div className="card-body"><div className="grid-2"><StatCard title="Recebimentos do mês" value={currency.format(receivedThisMonth)} helper="Pagamentos confirmados" icon={CheckCircle2} tone="green" /><StatCard title="Total pendente" value={currency.format(pendingAmount)} helper="A vencer + atrasadas" icon={CalendarClock} tone="orange" /></div></div></div>
+        <div>
+          <div className="card">
+            <div className="card-header"><h2>Indicadores financeiros</h2></div>
+            <div className="card-body"><div className="grid-2"><StatCard title="Recebimentos do mês" value={currency.format(receivedThisMonth)} helper="Pagamentos confirmados" icon={CheckCircle2} tone="green" /><StatCard title="Total pendente" value={currency.format(pendingAmount)} helper="A vencer + atrasadas" icon={CalendarClock} tone="orange" /></div></div>
+          </div>
+          <div className="card">
+            <div className="card-header"><h2>Custos por crédito</h2><Link href="/configuracoes">Configurar</Link></div>
+            <div className="card-body">
+              <div className="credit-kpis">
+                <div><span>Utilizados</span><strong>{creditsUsed}</strong><small>{currency.format(usedCreditCost)}</small></div>
+                <div><span>Previstos</span><strong>{creditsExpected}</strong><small>{currency.format(expectedCreditCost)}</small></div>
+                <div><span>Projeção do mês</span><strong>{projectedCredits}</strong><small>{currency.format(projectedCreditCost)}</small></div>
+                <div><span>Custo médio</span><strong>{currency.format(creditCost)}</strong><small>por crédito</small></div>
+              </div>
+              <div className="form-hint" style={{ marginTop: 12 }}><Coins size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Ao concluir uma renovação, os créditos previstos passam automaticamente para utilizados.</div>
+            </div>
+          </div>
+        </div>
       </section>
     </AppShell>
   );
