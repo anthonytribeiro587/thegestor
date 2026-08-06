@@ -1,14 +1,8 @@
 import Link from "next/link";
 import { BarChart3, Clock3, CreditCard, ShieldCheck } from "lucide-react";
-import { loginAction } from "@/app/auth/actions";
+import { LoginForm } from "@/components/login-form";
 
-type LoginPageProps = {
-  searchParams: Promise<{ erro?: string; sucesso?: string }>;
-};
-
-export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const params = await searchParams;
-
+export default function LoginPage() {
   return (
     <div className="auth-page">
       <section className="auth-brand-panel">
@@ -24,13 +18,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <section className="auth-form-panel">
         <div className="auth-card">
           <div className="auth-tabs"><Link className="active" href="/login">Entrar</Link><Link href="/cadastro">Criar conta</Link></div>
-          {params.erro ? <div role="alert" style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#ffeded", color: "#b4232b", fontSize: 12 }}>{params.erro}</div> : null}
-          {params.sucesso ? <div role="status" style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#e9f8f2", color: "#067451", fontSize: 12 }}>{params.sucesso}</div> : null}
-          <form className="form-stack" action={loginAction}>
-            <label>E-mail<input name="email" type="email" autoComplete="email" required placeholder="seu@email.com.br" /></label>
-            <label>Senha<input name="password" type="password" autoComplete="current-password" required placeholder="Digite sua senha" /></label>
-            <button className="button primary auth-submit" type="submit">Entrar</button>
-          </form>
+          <LoginForm />
           <p className="auth-note">Ainda não tem conta? <Link href="/cadastro">Criar conta</Link></p>
         </div>
       </section>
