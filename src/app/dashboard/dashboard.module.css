@@ -1,0 +1,43 @@
+.creditKpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.creditKpis > div {
+  border: 1px solid #e3e9f2;
+  border-radius: 10px;
+  padding: 13px 14px;
+  background: #fbfcff;
+  min-width: 0;
+}
+
+.creditKpis span,
+.creditKpis strong,
+.creditKpis small {
+  display: block;
+}
+
+.creditKpis span {
+  color: #52627a;
+  font-size: 11px;
+}
+
+.creditKpis strong {
+  margin-top: 4px;
+  color: #10213d;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+}
+
+.creditKpis small {
+  margin-top: 4px;
+  color: #6b7a91;
+  font-size: 10px;
+}
+
+@media (max-width: 520px) {
+  .creditKpis {
+    grid-template-columns: 1fr;
+  }
+}
