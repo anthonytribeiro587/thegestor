@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./quality.css";
 
 export const metadata: Metadata = {
   title: "thegestor | Gestão de cobranças",
