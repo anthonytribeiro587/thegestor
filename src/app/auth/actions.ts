@@ -2,34 +2,43 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  type AuthActionState,
+  looksLikeExistingSupabaseUser,
+  validateLoginInput,
+  validateRegistrationInput,
+} from "@/lib/auth-validation";
 
 function safeText(value: FormDataEntryValue | null) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-async function ensureCompanyForCurrentUser() {
-  const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+type AuthUserInput = {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, unknown>;
+};
 
-  if (userError || !userData.user) return null;
+async function ensureCompanyForUser(user: AuthUserInput) {
+  const supabase = await createClient();
 
   const { data: existing } = await supabase
     .from("usuarios_empresa")
     .select("empresa_id, papel")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", user.id)
     .eq("ativo", true)
     .limit(1)
     .maybeSingle();
 
   if (existing) return existing;
 
-  const metadata = userData.user.user_metadata ?? {};
+  const metadata = user.user_metadata ?? {};
   const companyName = typeof metadata.company_name === "string" && metadata.company_name.trim()
     ? metadata.company_name.trim()
     : "Minha empresa";
   const displayName = typeof metadata.full_name === "string" && metadata.full_name.trim()
     ? metadata.full_name.trim()
-    : userData.user.email?.split("@")[0] ?? "Administrador";
+    : user.email?.split("@")[0] ?? "Administrador";
 
   const { error: companyError } = await supabase.rpc("criar_empresa", {
     p_nome: companyName,
@@ -45,7 +54,7 @@ async function ensureCompanyForCurrentUser() {
   const { data: created } = await supabase
     .from("usuarios_empresa")
     .select("empresa_id, papel")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", user.id)
     .eq("ativo", true)
     .limit(1)
     .maybeSingle();
@@ -53,86 +62,90 @@ async function ensureCompanyForCurrentUser() {
   return created;
 }
 
-export async function loginAction(formData: FormData) {
+export async function loginAction(
+  _previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
   const email = safeText(formData.get("email")).toLowerCase();
   const password = safeText(formData.get("password"));
+  const validationError = validateLoginInput(email, password);
 
-  if (!email || !password) {
-    redirect("/login?erro=Preencha+e-mail+e+senha");
-  }
+  if (validationError) return { status: "error", message: validationError };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (error) {
-    redirect("/login?erro=E-mail+ou+senha+inválidos.+Se+acabou+de+criar+a+conta,+confirme+o+e-mail+primeiro");
+  if (error || !data.user) {
+    return {
+      status: "error",
+      message: "E-mail ou senha inválidos. Se acabou de criar a conta, confirme o e-mail primeiro.",
+    };
   }
 
-  const membership = await ensureCompanyForCurrentUser();
+  const membership = await ensureCompanyForUser(data.user);
   if (!membership) {
     await supabase.auth.signOut();
-    redirect("/login?erro=Não+foi+possível+preparar+sua+empresa");
+    return { status: "error", message: "Não foi possível preparar sua empresa. Tente novamente." };
   }
 
   redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
 }
 
-export async function registerAction(formData: FormData) {
-  const companyName = safeText(formData.get("companyName"));
-  const fullName = safeText(formData.get("fullName"));
-  const email = safeText(formData.get("email")).toLowerCase();
-  const password = safeText(formData.get("password"));
-  const confirmPassword = safeText(formData.get("confirmPassword"));
+export async function registerAction(
+  _previousState: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
+  const input = {
+    companyName: safeText(formData.get("companyName")),
+    fullName: safeText(formData.get("fullName")),
+    email: safeText(formData.get("email")).toLowerCase(),
+    password: safeText(formData.get("password")),
+    confirmPassword: safeText(formData.get("confirmPassword")),
+  };
 
-  if (!companyName || !fullName || !email || !password) {
-    redirect("/cadastro?erro=Preencha+todos+os+campos+obrigatórios");
-  }
-
-  if (password.length < 8) {
-    redirect("/cadastro?erro=A+senha+deve+ter+ao+menos+8+caracteres");
-  }
-
-  if (password !== confirmPassword) {
-    redirect("/cadastro?erro=As+senhas+não+coincidem");
-  }
+  const validationError = validateRegistrationInput(input);
+  if (validationError) return { status: "error", message: validationError };
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
+    email: input.email,
+    password: input.password,
     options: {
       data: {
-        full_name: fullName,
-        company_name: companyName,
+        full_name: input.fullName,
+        company_name: input.companyName,
       },
     },
   });
 
   if (error) {
-    redirect(`/cadastro?erro=${encodeURIComponent(error.message)}`);
+    return { status: "error", message: "Não foi possível criar a conta agora. Tente novamente." };
   }
 
-  // Com confirmação de e-mail habilitada, o Supabase pode retornar uma resposta
-  // neutra para um e-mail já existente. identities vazio identifica esse caso
-  // sem tratar a segunda tentativa como uma nova conta válida.
-  if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-    redirect("/login?erro=Este+e-mail+já+está+cadastrado.+Confirme+o+e-mail+recebido+ou+entre+na+sua+conta");
+  if (looksLikeExistingSupabaseUser(data.user)) {
+    return {
+      status: "error",
+      message: "Este e-mail já está cadastrado. Confirme o e-mail recebido ou entre na sua conta.",
+    };
   }
 
   if (!data.user) {
-    redirect("/cadastro?erro=Não+foi+possível+criar+a+conta.+Tente+novamente");
+    return { status: "error", message: "Não foi possível criar a conta. Tente novamente." };
   }
 
   if (data.session) {
-    const membership = await ensureCompanyForCurrentUser();
+    const membership = await ensureCompanyForUser(data.user);
     if (!membership) {
       await supabase.auth.signOut();
-      redirect("/login?erro=Conta+criada,+mas+a+empresa+não+pôde+ser+preparada");
+      return { status: "error", message: "Conta criada, mas a empresa não pôde ser preparada." };
     }
     redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
   }
 
-  redirect("/login?sucesso=Conta+criada.+Enviamos+um+e-mail+de+confirmação.+Confirme+o+endereço+e+depois+entre");
+  return {
+    status: "success",
+    message: "Conta criada. Enviamos um e-mail de confirmação. Confirme o endereço e depois entre.",
+  };
 }
 
 export async function logoutAction() {
