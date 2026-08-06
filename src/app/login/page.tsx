@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { BarChart3, Clock3, CreditCard, ShieldCheck } from "lucide-react";
+import { loginAction } from "@/app/auth/actions";
+import { AuthMessage } from "@/components/auth-message";
 
 export default function LoginPage() {
   return (
@@ -17,9 +19,10 @@ export default function LoginPage() {
       <section className="auth-form-panel">
         <div className="auth-card">
           <div className="auth-tabs"><Link className="active" href="/login">Entrar</Link><Link href="/cadastro">Criar conta</Link></div>
-          <form className="form-stack" action="/dashboard">
-            <label>E-mail<input type="email" required placeholder="seu@email.com.br" /></label>
-            <label>Senha<input type="password" required placeholder="Digite sua senha" /></label>
+          <AuthMessage />
+          <form className="form-stack" action={loginAction}>
+            <label>E-mail<input name="email" type="email" autoComplete="email" required placeholder="seu@email.com.br" /></label>
+            <label>Senha<input name="password" type="password" autoComplete="current-password" required placeholder="Digite sua senha" /></label>
             <button className="button primary auth-submit" type="submit">Entrar</button>
           </form>
           <p className="auth-note">Ainda não tem conta? <Link href="/cadastro">Criar conta</Link></p>
