@@ -1,43 +1,29 @@
-.creditKpis {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.creditKpis > div {
-  border: 1px solid #e3e9f2;
-  border-radius: 10px;
-  padding: 13px 14px;
-  background: #fbfcff;
-  min-width: 0;
-}
-
-.creditKpis span,
-.creditKpis strong,
-.creditKpis small {
-  display: block;
-}
-
-.creditKpis span {
-  color: #52627a;
-  font-size: 11px;
-}
-
-.creditKpis strong {
-  margin-top: 4px;
-  color: #10213d;
-  font-size: 21px;
-  letter-spacing: -0.03em;
-}
-
-.creditKpis small {
-  margin-top: 4px;
-  color: #6b7a91;
-  font-size: 10px;
-}
-
-@media (max-width: 520px) {
-  .creditKpis {
-    grid-template-columns: 1fr;
-  }
-}
+.summaryGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.panel{background:#fff;border:1px solid #e3e9f2;border-radius:12px;overflow:hidden;min-width:0}
+.panelHead{min-height:50px;padding:0 16px;border-bottom:1px solid #e3e9f2;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.panelHead h2{margin:0;font-size:15px}
+.panelHead a{font-size:11px;color:#1263f3;font-weight:700}
+.metricGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px}
+.metric{border:1px solid #e8edf4;border-radius:10px;padding:13px;background:#fbfcff;min-width:0}
+.metric span,.metric strong,.metric small{display:block}
+.metric span{font-size:10px;color:#65758b}
+.metric strong{font-size:20px;letter-spacing:-.03em;margin-top:4px;overflow-wrap:anywhere}
+.metric small{font-size:10px;color:#7b8799;margin-top:4px}
+.metricAccent strong{color:#079669}
+.metricWarn strong{color:#d66f07}
+.billingGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.chargeList{display:grid}
+.chargeRow{display:grid;grid-template-columns:minmax(0,1fr) 100px 90px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid #eef2f7;min-width:0}
+.chargeRow:last-child{border-bottom:0}
+.chargeMain{min-width:0}
+.chargeMain b,.chargeMain small{display:block}
+.chargeMain b{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chargeMain small{font-size:9px;color:#7b8799;margin-top:3px}
+.chargeDate,.chargeValue{font-size:10px;white-space:nowrap}
+.chargeValue{text-align:right;font-weight:700}
+.queuePanel{margin-bottom:4px}
+.empty{padding:24px 16px;color:#6b7a91;text-align:center;font-size:11px}
+.creditNote{padding:0 14px 14px;color:#6b7a91;font-size:10px;line-height:1.5}
+@media(max-width:1100px){.summaryGrid,.billingGrid{grid-template-columns:1fr}}
+@media(max-width:620px){.metricGrid{grid-template-columns:1fr 1fr}.chargeRow{grid-template-columns:minmax(0,1fr) auto}.chargeDate{display:none}.chargeValue{text-align:right}}
+@media(max-width:420px){.metricGrid{grid-template-columns:1fr}.chargeRow{padding:11px 12px}}
