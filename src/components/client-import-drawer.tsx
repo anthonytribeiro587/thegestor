@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Upload, X } from "lucide-react";
 import { currency } from "@/lib/format";
 import { parseClientSpreadsheetRows, type ImportSummary } from "@/lib/client-import";
@@ -53,6 +53,28 @@ export function ClientImportDrawer({
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creditCost, setCreditCost] = useState(8);
+
+  useEffect(() => {
+    if (!open || !empresaId) return;
+    let cancelled = false;
+
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("configuracoes_empresa")
+        .select("custo_medio_credito")
+        .eq("empresa_id", empresaId)
+        .maybeSingle();
+      if (!cancelled && data?.custo_medio_credito != null) {
+        setCreditCost(Number(data.custo_medio_credito));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, empresaId]);
 
   function reset() {
     setFileName(null);
@@ -82,7 +104,9 @@ export function ClientImportDrawer({
     setResult(null);
 
     try {
-      const { readSheet } = await import("read-excel-file/browser");
+      // A versão universal evita Web Worker no bundle do Next. Para uma base pequena,
+      // como a planilha atual, é mais simples e previsível.
+      const { readSheet } = await import("read-excel-file/universal");
       const rows = await readSheet(file);
       const parsed = parseClientSpreadsheetRows(rows as unknown as Array<Array<string | number | boolean | Date | null>>);
       setFileName(file.name);
@@ -119,6 +143,8 @@ export function ClientImportDrawer({
     }
   }
 
+  const projectedCredits = summary ? summary.creditsUsed + summary.creditsExpected : 0;
+
   return (
     <div className={`drawer-wrap ${open ? "open" : ""}`} aria-hidden={!open}>
       <div className="drawer-backdrop" onClick={close} />
@@ -143,7 +169,9 @@ export function ClientImportDrawer({
               <div><span>Clientes</span><strong>{summary.totalClients}</strong></div>
               <div><span>Créditos utilizados</span><strong>{summary.creditsUsed}</strong></div>
               <div><span>Créditos previstos</span><strong>{summary.creditsExpected}</strong></div>
-              <div><span>Créditos no mês</span><strong>{summary.creditsUsed + summary.creditsExpected}</strong></div>
+              <div><span>Créditos no mês</span><strong>{projectedCredits}</strong></div>
+              <div><span>Custo/crédito</span><strong>{currency.format(creditCost)}</strong></div>
+              <div><span>Custo projetado</span><strong>{currency.format(projectedCredits * creditCost)}</strong></div>
               <div><span>Valor negociado</span><strong>{currency.format(summary.negotiated)}</strong></div>
               <div><span>Pago</span><strong>{currency.format(summary.paid)}</strong></div>
               <div><span>A receber</span><strong>{currency.format(summary.receivable)}</strong></div>
