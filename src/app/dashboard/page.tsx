@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { formatDateBR, monthBounds, operationalChargeStatus, todayInSaoPaulo } from "@/lib/billing";
 import { currency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import styles from "./dashboard.module.css";
 
 type ChargeRow = {
   id: string;
@@ -155,7 +156,7 @@ export default async function DashboardPage() {
           <div className="card">
             <div className="card-header"><h2>Custos por crédito</h2><Link href="/configuracoes">Configurar</Link></div>
             <div className="card-body">
-              <div className="credit-kpis">
+              <div className={styles.creditKpis}>
                 <div><span>Utilizados</span><strong>{creditsUsed}</strong><small>{currency.format(usedCreditCost)}</small></div>
                 <div><span>Previstos</span><strong>{creditsExpected}</strong><small>{currency.format(expectedCreditCost)}</small></div>
                 <div><span>Projeção do mês</span><strong>{projectedCredits}</strong><small>{currency.format(projectedCreditCost)}</small></div>
