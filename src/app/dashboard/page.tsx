@@ -10,6 +10,7 @@ import styles from "./dashboard.module.css";
 
 type ChargeRow = {
   id: string;
+  competencia: string;
   vencimento: string;
   status_pagamento: string;
   pago_em: string | null;
@@ -22,30 +23,29 @@ type QueueRow = {
   prioridade: string;
   clientes: { nome: string } | { nome: string }[] | null;
 };
-type CreditRow = {
-  creditos_utilizados: number | null;
-  creditos_previstos: number | null;
-};
+type CreditRow = { creditos_utilizados: number | null; creditos_previstos: number | null };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
-function chargeBalance(charge: ChargeRow) {
-  const financial = first(charge.cobrancas_financeiras);
-  return Math.max(Number(financial?.valor_original ?? 0) - Number(financial?.valor_pago ?? 0), 0);
-}
-
 function chargeValue(charge: ChargeRow) {
   return Number(first(charge.cobrancas_financeiras)?.valor_original ?? 0);
+}
+
+function chargePaid(charge: ChargeRow) {
+  return Number(first(charge.cobrancas_financeiras)?.valor_pago ?? 0);
+}
+
+function chargeBalance(charge: ChargeRow) {
+  return Math.max(chargeValue(charge) - chargePaid(charge), 0);
 }
 
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: claimsData } = await supabase.auth.getClaims();
   const userId = claimsData?.claims?.sub;
-
   const { data: membership } = userId
     ? await supabase.from("usuarios_empresa").select("empresa_id").eq("user_id", userId).eq("ativo", true).limit(1).maybeSingle()
     : { data: null };
@@ -66,8 +66,8 @@ export default async function DashboardPage() {
     const [activeResult, cancelledResult, openResult, paidResult, queueResult, creditsResult, configResult] = await Promise.all([
       supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "ativo"),
       supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "cancelado"),
-      supabase.from("cobrancas").select("id,vencimento,status_pagamento,pago_em,clientes(nome),cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).in("status_pagamento", ["pendente", "atrasado"]).order("vencimento", { ascending: true }),
-      supabase.from("cobrancas").select("id,vencimento,status_pagamento,pago_em,cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).eq("status_pagamento", "pago").gte("pago_em", `${firstDay}T00:00:00`).lt("pago_em", `${nextMonth}T00:00:00`),
+      supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,clientes(nome),cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).in("status_pagamento", ["pendente", "atrasado"]).order("vencimento", { ascending: true }),
+      supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).eq("status_pagamento", "pago").gte("pago_em", `${firstDay}T00:00:00`).lt("pago_em", `${nextMonth}T00:00:00`),
       supabase.from("tarefas_operacionais").select("id,tipo,prioridade,clientes(nome)").eq("empresa_id", empresaId).eq("status", "pendente").order("criado_em", { ascending: true }).limit(5),
       supabase.from("cobrancas").select("creditos_utilizados,creditos_previstos").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth).neq("status_pagamento", "cancelado"),
       supabase.from("configuracoes_empresa").select("custo_medio_credito").eq("empresa_id", empresaId).maybeSingle(),
@@ -76,17 +76,19 @@ export default async function DashboardPage() {
     activeClients = activeResult.count ?? 0;
     cancelledClients = cancelledResult.count ?? 0;
     openCharges = (openResult.data ?? []) as ChargeRow[];
-    paidThisMonth = (paidResult.data ?? []) as ChargeRow[];
+    paidThisMonth = ((paidResult.data ?? []) as ChargeRow[]).filter((charge) => chargeValue(charge) > 0 && chargePaid(charge) > 0);
     queue = (queueResult.data ?? []) as QueueRow[];
     creditRows = (creditsResult.data ?? []) as CreditRow[];
     creditCost = Number(configResult.data?.custo_medio_credito ?? 8);
   }
 
-  const overdue = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado");
-  const upcoming = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "A vencer").slice(0, 5);
+  const overdue = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado" && chargeBalance(charge) > 0);
+  const upcoming = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "A vencer" && chargeBalance(charge) > 0).slice(0, 5);
   const late = overdue.slice(0, 5);
-
-  const receivedThisMonth = paidThisMonth.reduce((sum, charge) => sum + Number(first(charge.cobrancas_financeiras)?.valor_pago ?? chargeValue(charge)), 0);
+  const partialReceivedThisMonth = openCharges
+    .filter((charge) => charge.competencia >= firstDay && charge.competencia < nextMonth && chargePaid(charge) > 0)
+    .reduce((sum, charge) => sum + chargePaid(charge), 0);
+  const receivedThisMonth = paidThisMonth.reduce((sum, charge) => sum + chargePaid(charge), 0) + partialReceivedThisMonth;
   const pendingAmount = openCharges.reduce((sum, charge) => sum + chargeBalance(charge), 0);
   const overdueAmount = overdue.reduce((sum, charge) => sum + chargeBalance(charge), 0);
 
@@ -101,7 +103,7 @@ export default async function DashboardPage() {
       <section className="stats-grid">
         <StatCard title="Clientes ativos" value={String(activeClients)} helper="Base atual" icon={Users} />
         <StatCard title="Clientes cancelados" value={String(cancelledClients)} helper="Base atual" icon={UserRoundX} tone="slate" />
-        <StatCard title="Pagamentos no mês" value={String(paidThisMonth.length)} helper="Cobranças quitadas" icon={UserRoundCheck} tone="green" />
+        <StatCard title="Cobranças quitadas" value={String(paidThisMonth.length)} helper="Com valor recebido no mês" icon={UserRoundCheck} tone="green" />
         <StatCard title="Pagamentos em atraso" value={String(overdue.length)} helper="Exigem acompanhamento" icon={AlertTriangle} tone="orange" />
       </section>
 
@@ -109,8 +111,8 @@ export default async function DashboardPage() {
         <article className={styles.panel}>
           <div className={styles.panelHead}><h2>Resumo financeiro</h2><Link href="/cobrancas">Ver cobranças</Link></div>
           <div className={styles.metricGrid}>
-            <div className={`${styles.metric} ${styles.metricAccent}`}><span>Recebido no mês</span><strong>{currency.format(receivedThisMonth)}</strong><small>{paidThisMonth.length} cobrança(s) quitada(s)</small></div>
-            <div className={`${styles.metric} ${styles.metricWarn}`}><span>A receber</span><strong>{currency.format(pendingAmount)}</strong><small>saldo das cobranças abertas</small></div>
+            <div className={`${styles.metric} ${styles.metricAccent}`}><span>Recebido no mês</span><strong>{currency.format(receivedThisMonth)}</strong><small>inclui pagamentos parciais</small></div>
+            <div className={`${styles.metric} ${styles.metricWarn}`}><span>A receber</span><strong>{currency.format(pendingAmount)}</strong><small>saldo real das cobranças abertas</small></div>
             <div className={`${styles.metric} ${styles.metricWarn}`}><span>Em atraso</span><strong>{currency.format(overdueAmount)}</strong><small>{overdue.length} cobrança(s)</small></div>
             <div className={styles.metric}><span>Próximas cobranças</span><strong>{upcoming.length}</strong><small>exibidas abaixo</small></div>
           </div>
