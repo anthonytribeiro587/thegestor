@@ -17,12 +17,14 @@ type QueueRow = {
   prioridade: string;
   cliente_id: string;
   cliente_nome: string;
-  telefone: string;
+  telefone: string | null;
   cliente_status: string;
   cobranca_id: string | null;
   vencimento: string | null;
   status_pagamento: string | null;
   pago_em: string | null;
+  creditos_previstos: number | null;
+  creditos_utilizados: number | null;
   criado_em: string;
 };
 
@@ -32,6 +34,12 @@ type ActivityRow = {
   status: string;
   atualizado_em: string;
   clientes: { nome: string } | { nome: string }[] | null;
+};
+
+type CompleteResult = {
+  concluida: boolean;
+  ja_concluida?: boolean;
+  creditos_movidos: number;
 };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
@@ -62,6 +70,7 @@ export default function OperatorPage() {
   const [activities, setActivities] = useState<ActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -88,7 +97,7 @@ export default function OperatorPage() {
       const [queueResult, activitiesResult] = await Promise.all([
         supabase
           .from("fila_operacional")
-          .select("tarefa_id,empresa_id,tipo,status_tarefa,prioridade,cliente_id,cliente_nome,telefone,cliente_status,cobranca_id,vencimento,status_pagamento,pago_em,criado_em")
+          .select("tarefa_id,empresa_id,tipo,status_tarefa,prioridade,cliente_id,cliente_nome,telefone,cliente_status,cobranca_id,vencimento,status_pagamento,pago_em,creditos_previstos,creditos_utilizados,criado_em")
           .eq("empresa_id", membership.empresa_id)
           .eq("status_tarefa", "pendente")
           .order("criado_em", { ascending: true })
@@ -120,17 +129,18 @@ export default function OperatorPage() {
   const completeTask = useCallback(async (taskId: string, tipo: string) => {
     setSavingId(taskId);
     setError(null);
+    setSuccess(null);
     try {
       const supabase = createClient();
-      const { error: updateError } = await supabase
-        .from("tarefas_operacionais")
-        .update({
-          status: "concluida",
-          observacao_operador: tipo === "novo_cliente" ? "Cliente ativado pelo operador" : "Renovação concluída pelo operador",
-        })
-        .eq("id", taskId);
+      const { data, error: rpcError } = await supabase.rpc("concluir_tarefa_operacional", {
+        p_tarefa_id: taskId,
+        p_observacao: tipo === "novo_cliente" ? "Cliente ativado pelo operador" : tipo === "renovar" ? "Renovação concluída pelo operador" : "Tarefa concluída pelo operador",
+      });
 
-      if (updateError) throw updateError;
+      if (rpcError) throw rpcError;
+      const result = data as CompleteResult | null;
+      const moved = Number(result?.creditos_movidos ?? 0);
+      setSuccess(moved > 0 ? `Operação concluída. ${moved} crédito${moved === 1 ? "" : "s"} movido${moved === 1 ? "" : "s"} de previsto para utilizado.` : "Operação concluída.");
       await loadData();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível concluir a tarefa.");
@@ -156,11 +166,12 @@ export default function OperatorPage() {
         <StatCard title="Vencidos" value={String(stats.overdue)} helper="Exigem acompanhamento" icon={AlertTriangle} tone="red" />
         <StatCard title="Novos clientes pagos" value={String(stats.newClients)} helper="Aguardando ativação" icon={UserRoundPlus} tone="orange" />
       </section>
+      {success ? <div className="card" style={{ marginBottom: 16 }}><div className="form-success" role="status">{success}</div></div> : null}
       {error ? <div className="card" style={{ marginBottom: 16 }}><div className="empty-note">{error} <button className="text-link" onClick={() => void loadData()}>Tentar novamente</button></div></div> : null}
       <section className="grid-dashboard">
         <div className="card">
           <div className="card-header"><h2>Cobranças e renovações</h2><span className="text-link">Sem valores financeiros</span></div>
-          {loading ? <div className="empty-note">Carregando fila...</div> : queue.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Status do pagamento</th><th>Tarefa</th><th>Ação</th></tr></thead><tbody>{queue.map((item) => <tr key={item.tarefa_id}><td><div className="client-cell"><span className="mini-avatar">{item.cliente_nome.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{item.cliente_nome}</div></td><td>{item.telefone}</td><td>{item.vencimento ? formatDateBR(item.vencimento) : "—"}</td><td><StatusBadge status={paymentStatus(item, today)} /></td><td>{taskLabel(item.tipo)}</td><td><button className="button ghost small" disabled={savingId === item.tarefa_id} onClick={() => void completeTask(item.tarefa_id, item.tipo)}>{savingId === item.tarefa_id ? "Salvando..." : actionLabel(item.tipo)}</button></td></tr>)}</tbody></table></div> : <div className="empty-note">Nenhuma tarefa operacional pendente.</div>}
+          {loading ? <div className="empty-note">Carregando fila...</div> : queue.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Telefone</th><th>Vencimento</th><th>Status do pagamento</th><th>Créditos</th><th>Tarefa</th><th>Ação</th></tr></thead><tbody>{queue.map((item) => <tr key={item.tarefa_id}><td><div className="client-cell"><span className="mini-avatar">{item.cliente_nome.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{item.cliente_nome}</div></td><td>{item.telefone ?? "—"}</td><td>{item.vencimento ? formatDateBR(item.vencimento) : "—"}</td><td><StatusBadge status={paymentStatus(item, today)} /></td><td>{Number(item.creditos_previstos ?? 0)}</td><td>{taskLabel(item.tipo)}</td><td><button className="button ghost small" disabled={savingId === item.tarefa_id} onClick={() => void completeTask(item.tarefa_id, item.tipo)}>{savingId === item.tarefa_id ? "Salvando..." : actionLabel(item.tipo)}</button></td></tr>)}</tbody></table></div> : <div className="empty-note">Nenhuma tarefa operacional pendente.</div>}
         </div>
         <aside className="card" style={{ alignSelf: "start" }}>
           <div className="card-header"><h2>Últimas atividades</h2></div>
