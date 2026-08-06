@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, Upload, X } from "lucide-react";
+import { FileSpreadsheet, RefreshCw, Upload, X } from "lucide-react";
 import { currency } from "@/lib/format";
 import type { ImportSummary } from "@/lib/client-import";
 import { createClient } from "@/lib/supabase/client";
@@ -27,6 +27,7 @@ function competenceLabel(value: string) {
 
 type ImportResult = {
   importados: number;
+  atualizados: number;
   ignorados: number;
   creditos_utilizados: number;
   creditos_previstos: number;
@@ -58,20 +59,12 @@ export function ClientImportDrawer({
   useEffect(() => {
     if (!open || !empresaId) return;
     let cancelled = false;
-
     void (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("configuracoes_empresa")
-        .select("custo_medio_credito")
-        .eq("empresa_id", empresaId)
-        .maybeSingle();
+      const { data } = await supabase.from("configuracoes_empresa").select("custo_medio_credito").eq("empresa_id", empresaId).maybeSingle();
       if (!cancelled && data?.custo_medio_credito != null) setCreditCost(Number(data.custo_medio_credito));
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, empresaId]);
 
   function reset() {
@@ -91,7 +84,6 @@ export function ClientImportDrawer({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-
     if (!file.name.toLowerCase().endsWith(".xlsx")) {
       setError("Selecione uma planilha .xlsx.");
       return;
@@ -100,7 +92,6 @@ export function ClientImportDrawer({
     setReading(true);
     setError(null);
     setResult(null);
-
     try {
       const body = new FormData();
       body.set("file", file);
@@ -122,7 +113,6 @@ export function ClientImportDrawer({
     if (!empresaId || !summary || saving) return;
     setSaving(true);
     setError(null);
-
     try {
       const supabase = createClient();
       const { data, error: rpcError } = await supabase.rpc("importar_clientes_planilha", {
@@ -130,12 +120,11 @@ export function ClientImportDrawer({
         p_competencia: competence,
         p_clientes: summary.clients,
       });
-
       if (rpcError) throw rpcError;
       setResult(data as ImportResult);
       await onImported();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível importar os clientes.");
+      setError(cause instanceof Error ? cause.message : "Não foi possível sincronizar os clientes.");
     } finally {
       setSaving(false);
     }
@@ -146,9 +135,9 @@ export function ClientImportDrawer({
   return (
     <div className={`drawer-wrap ${open ? "open" : ""}`} aria-hidden={!open}>
       <div className="drawer-backdrop" onClick={close} />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Importar clientes">
+      <aside className="drawer" role="dialog" aria-modal="true" aria-label="Sincronizar clientes">
         <div className="drawer-header">
-          <div><h2>Importar clientes</h2><p>O arquivo é lido temporariamente pelo servidor e não é salvo nem enviado ao GitHub</p></div>
+          <div><h2>Sincronizar planilha</h2><p>Novos clientes são incluídos e clientes já existentes são atualizados com os valores atuais da XLS</p></div>
           <button className="icon-button" onClick={close} disabled={reading || saving} aria-label="Fechar"><X size={20} /></button>
         </div>
 
@@ -162,33 +151,25 @@ export function ClientImportDrawer({
             </label>
           </div>
 
-          {summary ? (
-            <div className="import-summary">
-              <div><span>Clientes</span><strong>{summary.totalClients}</strong></div>
-              <div><span>Créditos utilizados</span><strong>{summary.creditsUsed}</strong></div>
-              <div><span>Créditos previstos</span><strong>{summary.creditsExpected}</strong></div>
-              <div><span>Créditos no mês</span><strong>{projectedCredits}</strong></div>
-              <div><span>Custo/crédito</span><strong>{currency.format(creditCost)}</strong></div>
-              <div><span>Custo projetado</span><strong>{currency.format(projectedCredits * creditCost)}</strong></div>
-              <div><span>Valor negociado</span><strong>{currency.format(summary.negotiated)}</strong></div>
-              <div><span>Pago</span><strong>{currency.format(summary.paid)}</strong></div>
-              <div><span>A receber</span><strong>{currency.format(summary.receivable)}</strong></div>
-            </div>
-          ) : null}
+          {summary ? <div className="import-summary">
+            <div><span>Clientes</span><strong>{summary.totalClients}</strong></div>
+            <div><span>Créditos utilizados</span><strong>{summary.creditsUsed}</strong></div>
+            <div><span>Créditos previstos</span><strong>{summary.creditsExpected}</strong></div>
+            <div><span>Créditos no mês</span><strong>{projectedCredits}</strong></div>
+            <div><span>Custo/crédito</span><strong>{currency.format(creditCost)}</strong></div>
+            <div><span>Custo projetado</span><strong>{currency.format(projectedCredits * creditCost)}</strong></div>
+            <div><span>Valor negociado</span><strong>{currency.format(summary.negotiated)}</strong></div>
+            <div><span>Pago</span><strong>{currency.format(summary.paid)}</strong></div>
+            <div><span>A receber</span><strong>{currency.format(summary.receivable)}</strong></div>
+          </div> : null}
 
-          {summary ? <div className="form-hint">Nomes como <b>2/3</b> serão limpos e o ciclo ficará salvo na assinatura. “Até 10/08” e “Acabou trimestral” serão movidos para observações.</div> : null}
+          {summary ? <div className="form-hint"><RefreshCw size={13} style={{ verticalAlign: "middle", marginRight: 5 }} />Ao sincronizar novamente, <b>valor pago, saldo, créditos, ciclo e observações serão atualizados</b>. A operação não duplica os clientes existentes.</div> : null}
 
-          {result ? (
-            <div className="form-success" role="status">
-              Importação concluída: {result.importados} clientes incluídos{result.ignorados ? ` e ${result.ignorados} ignorados por já existirem` : ""}.
-            </div>
-          ) : null}
+          {result ? <div className="form-success" role="status">Sincronização concluída: {result.importados} novo(s) e {result.atualizados} atualizado(s). Totais aplicados: {result.creditos_utilizados} créditos utilizados, {result.creditos_previstos} previstos, {currency.format(result.valor_pago)} pagos e {currency.format(result.valor_a_receber)} a receber.</div> : null}
           {error ? <div className="form-error" role="alert">{error}</div> : null}
 
           <div className="drawer-actions">
-            <button className="button primary" type="button" onClick={importClients} disabled={!empresaId || !summary || saving || Boolean(result)}>
-              {saving ? "Importando..." : summary ? `Importar ${summary.totalClients} clientes` : "Selecione a planilha"}
-            </button>
+            <button className="button primary" type="button" onClick={importClients} disabled={!empresaId || !summary || saving || Boolean(result)}>{saving ? "Sincronizando..." : summary ? `Sincronizar ${summary.totalClients} clientes` : "Selecione a planilha"}</button>
             <button className="button secondary" type="button" onClick={close} disabled={reading || saving}>{result ? "Concluir" : "Cancelar"}</button>
           </div>
         </div>
