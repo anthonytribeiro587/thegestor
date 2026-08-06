@@ -69,7 +69,12 @@ export async function loginAction(formData: FormData) {
   }
 
   const membership = await ensureCompanyForCurrentUser();
-  redirect(membership?.papel === "operador" ? "/operador" : "/dashboard");
+  if (!membership) {
+    await supabase.auth.signOut();
+    redirect("/login?erro=Não+foi+possível+preparar+sua+empresa");
+  }
+
+  redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
 }
 
 export async function registerAction(formData: FormData) {
@@ -109,7 +114,11 @@ export async function registerAction(formData: FormData) {
 
   if (data.session) {
     const membership = await ensureCompanyForCurrentUser();
-    redirect(membership?.papel === "operador" ? "/operador" : "/dashboard");
+    if (!membership) {
+      await supabase.auth.signOut();
+      redirect("/login?erro=Conta+criada,+mas+a+empresa+não+pôde+ser+preparada");
+    }
+    redirect(membership.papel === "operador" ? "/operador" : "/dashboard");
   }
 
   redirect("/login?sucesso=Conta+criada.+Confirme+seu+e-mail+e+depois+entre");
