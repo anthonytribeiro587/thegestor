@@ -1,14 +1,8 @@
 import Link from "next/link";
 import { BarChart3, Clock3, CreditCard, ShieldCheck } from "lucide-react";
-import { registerAction } from "@/app/auth/actions";
+import { RegisterForm } from "@/components/register-form";
 
-type RegisterPageProps = {
-  searchParams: Promise<{ erro?: string }>;
-};
-
-export default async function RegisterPage({ searchParams }: RegisterPageProps) {
-  const params = await searchParams;
-
+export default function RegisterPage() {
   return (
     <div className="auth-page">
       <section className="auth-brand-panel">
@@ -24,15 +18,7 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
       <section className="auth-form-panel">
         <div className="auth-card">
           <div className="auth-tabs"><Link href="/login">Entrar</Link><Link className="active" href="/cadastro">Criar conta</Link></div>
-          {params.erro ? <div role="alert" style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#ffeded", color: "#b4232b", fontSize: 12 }}>{params.erro}</div> : null}
-          <form className="form-stack" action={registerAction}>
-            <label>Nome da empresa<input name="companyName" required placeholder="Digite o nome da sua empresa" /></label>
-            <label>Seu nome<input name="fullName" autoComplete="name" required placeholder="Digite seu nome completo" /></label>
-            <label>E-mail<input name="email" type="email" autoComplete="email" required placeholder="seu@email.com.br" /></label>
-            <label>Senha<input name="password" type="password" autoComplete="new-password" minLength={8} required placeholder="Crie uma senha segura" /></label>
-            <label>Confirmar senha<input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required placeholder="Confirme sua senha" /></label>
-            <button className="button primary auth-submit" type="submit">Criar conta</button>
-          </form>
+          <RegisterForm />
           <p className="auth-note">Já tem conta? <Link href="/login">Entrar</Link></p>
         </div>
       </section>
