@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { BarChart3, Clock3, CreditCard, ShieldCheck } from "lucide-react";
+import { registerAction } from "@/app/auth/actions";
+import { AuthMessage } from "@/components/auth-message";
 
 export default function RegisterPage() {
   return (
@@ -17,12 +19,13 @@ export default function RegisterPage() {
       <section className="auth-form-panel">
         <div className="auth-card">
           <div className="auth-tabs"><Link href="/login">Entrar</Link><Link className="active" href="/cadastro">Criar conta</Link></div>
-          <form className="form-stack" action="/dashboard">
-            <label>Nome da empresa<input required placeholder="Digite o nome da sua empresa" /></label>
-            <label>Seu nome<input required placeholder="Digite seu nome completo" /></label>
-            <label>E-mail<input type="email" required placeholder="seu@email.com.br" /></label>
-            <label>Senha<input type="password" required placeholder="Crie uma senha segura" /></label>
-            <label>Confirmar senha<input type="password" required placeholder="Confirme sua senha" /></label>
+          <AuthMessage />
+          <form className="form-stack" action={registerAction}>
+            <label>Nome da empresa<input name="companyName" required placeholder="Digite o nome da sua empresa" /></label>
+            <label>Seu nome<input name="fullName" autoComplete="name" required placeholder="Digite seu nome completo" /></label>
+            <label>E-mail<input name="email" type="email" autoComplete="email" required placeholder="seu@email.com.br" /></label>
+            <label>Senha<input name="password" type="password" autoComplete="new-password" minLength={8} required placeholder="Crie uma senha segura" /></label>
+            <label>Confirmar senha<input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required placeholder="Confirme sua senha" /></label>
             <button className="button primary auth-submit" type="submit">Criar conta</button>
           </form>
           <p className="auth-note">Já tem conta? <Link href="/login">Entrar</Link></p>
