@@ -69,7 +69,7 @@ export function ChargeActionsDrawer({
       const next = data as ChargeDetail;
       setDetail(next);
       const financial = first(next.cobrancas_financeiras);
-      setPaymentValue(String(Number(financial?.valor_pago ?? financial?.valor_original ?? 0)));
+      setPaymentValue(String(Number(financial?.valor_pago ?? 0)));
     } catch (cause) {
       setDetail(null);
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar a cobrança.");
