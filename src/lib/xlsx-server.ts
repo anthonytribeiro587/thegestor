@@ -115,11 +115,13 @@ export function parseWorksheetXml(xml: string, sharedStrings: string[] = []) {
 
   for (const rowMatch of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
     const row: Array<string | number | boolean | null> = [];
-    for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+    // Importante: células vazias do Excel aparecem como <c .../>. O regex precisa
+    // consumi-las individualmente para não anexar o valor da próxima célula à coluna errada.
+    for (const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const ref = attribute(cellMatch[1], "r") ?? "A1";
       const index = columnIndex(ref);
       while (row.length <= index) row.push(null);
-      row[index] = parseCell(cellMatch[1], cellMatch[2], sharedStrings);
+      row[index] = parseCell(cellMatch[1], cellMatch[2] ?? "", sharedStrings);
     }
     rows.push(row);
   }
