@@ -1,9 +1,14 @@
 import Link from "next/link";
 import { BarChart3, Clock3, CreditCard, ShieldCheck } from "lucide-react";
 import { loginAction } from "@/app/auth/actions";
-import { AuthMessage } from "@/components/auth-message";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{ erro?: string; sucesso?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+
   return (
     <div className="auth-page">
       <section className="auth-brand-panel">
@@ -19,7 +24,8 @@ export default function LoginPage() {
       <section className="auth-form-panel">
         <div className="auth-card">
           <div className="auth-tabs"><Link className="active" href="/login">Entrar</Link><Link href="/cadastro">Criar conta</Link></div>
-          <AuthMessage />
+          {params.erro ? <div role="alert" style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#ffeded", color: "#b4232b", fontSize: 12 }}>{params.erro}</div> : null}
+          {params.sucesso ? <div role="status" style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: "#e9f8f2", color: "#067451", fontSize: 12 }}>{params.sucesso}</div> : null}
           <form className="form-stack" action={loginAction}>
             <label>E-mail<input name="email" type="email" autoComplete="email" required placeholder="seu@email.com.br" /></label>
             <label>Senha<input name="password" type="password" autoComplete="current-password" required placeholder="Digite sua senha" /></label>
