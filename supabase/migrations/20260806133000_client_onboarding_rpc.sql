@@ -79,7 +79,10 @@ begin
 
   if v_valor_atual is null or v_valor_atual is distinct from p_valor then
     update public.planos_precos
-      set vigente_ate = current_date - 1
+      set vigente_ate = case
+        when vigente_desde < current_date then current_date - 1
+        else current_date
+      end
     where empresa_id = p_empresa_id
       and plano_id = v_plano_id
       and vigente_ate is null;
