@@ -3,7 +3,7 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Upload, X } from "lucide-react";
 import { currency } from "@/lib/format";
-import { parseClientSpreadsheetRows, type ImportSummary } from "@/lib/client-import";
+import type { ImportSummary } from "@/lib/client-import";
 import { createClient } from "@/lib/supabase/client";
 
 function currentCompetence() {
@@ -66,9 +66,7 @@ export function ClientImportDrawer({
         .select("custo_medio_credito")
         .eq("empresa_id", empresaId)
         .maybeSingle();
-      if (!cancelled && data?.custo_medio_credito != null) {
-        setCreditCost(Number(data.custo_medio_credito));
-      }
+      if (!cancelled && data?.custo_medio_credito != null) setCreditCost(Number(data.custo_medio_credito));
     })();
 
     return () => {
@@ -104,13 +102,13 @@ export function ClientImportDrawer({
     setResult(null);
 
     try {
-      // A versão universal evita Web Worker no bundle do Next. Para uma base pequena,
-      // como a planilha atual, é mais simples e previsível.
-      const { readSheet } = await import("read-excel-file/universal");
-      const rows = await readSheet(file);
-      const parsed = parseClientSpreadsheetRows(rows as unknown as Array<Array<string | number | boolean | Date | null>>);
+      const body = new FormData();
+      body.set("file", file);
+      const response = await fetch("/api/import/clientes/preview", { method: "POST", body });
+      const payload = await response.json() as ImportSummary | { error?: string };
+      if (!response.ok) throw new Error("error" in payload && payload.error ? payload.error : "Não foi possível ler a planilha.");
       setFileName(file.name);
-      setSummary(parsed);
+      setSummary(payload as ImportSummary);
     } catch (cause) {
       setSummary(null);
       setFileName(null);
@@ -150,7 +148,7 @@ export function ClientImportDrawer({
       <div className="drawer-backdrop" onClick={close} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-label="Importar clientes">
         <div className="drawer-header">
-          <div><h2>Importar clientes</h2><p>Importe sua planilha atual sem colocar dados de clientes no GitHub</p></div>
+          <div><h2>Importar clientes</h2><p>O arquivo é lido temporariamente pelo servidor e não é salvo nem enviado ao GitHub</p></div>
           <button className="icon-button" onClick={close} disabled={reading || saving} aria-label="Fechar"><X size={20} /></button>
         </div>
 
