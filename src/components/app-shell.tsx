@@ -11,7 +11,7 @@ export function AppShell({ children, role = "Administrador" }: { children: React
       <div className="mobile-backdrop" onClick={() => setOpen(false)} />
       <Sidebar role={role} />
       <div className="app-main">
-        <Topbar onMenu={() => setOpen((value) => !value)} />
+        <Topbar role={role} onMenu={() => setOpen((value) => !value)} />
         <main className="page-content">{children}</main>
       </div>
     </div>
