@@ -4,6 +4,12 @@
 
 begin;
 
+-- O SQL Editor executa como role postgres e nao possui auth.uid().
+-- O trigger antigo de protecao do operador interpreta isso como usuario sem acesso.
+-- Desabilitamos triggers de usuario somente durante o reparo administrativo abaixo.
+-- Como tudo esta dentro da mesma transaction, qualquer erro restaura o estado anterior.
+alter table public.tarefas_operacionais disable trigger user;
+
 -- 1. Restaura tarefas que possuem prova de conclusao no audit log,
 -- caso alguma sincronizacao/correcao posterior tenha alterado o status.
 update public.tarefas_operacionais t
@@ -78,6 +84,9 @@ where t.cobranca_id = c.id
   and t.status = 'pendente'
   and t.tipo = 'renovar'
   and coalesce(c.creditos_previstos, 0) <= 0;
+
+-- O reparo administrativo terminou; as protecoes normais voltam a valer.
+alter table public.tarefas_operacionais enable trigger user;
 
 -- 5. Bloqueia reabertura de tarefa concluida para qualquer origem.
 -- Se um dia precisarmos desfazer uma renovacao, isso deve existir como uma RPC
