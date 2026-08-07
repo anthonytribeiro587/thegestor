@@ -49,7 +49,10 @@ export function mercadoPagoConfigured() {
 }
 
 export function mercadoPagoWebhookConfigured() {
-  return Boolean(process.env.MERCADO_PAGO_WEBHOOK_SECRET && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(
+    process.env.MERCADO_PAGO_WEBHOOK_SECRET
+    && (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY),
+  );
 }
 
 async function mpFetch<T>(path: string, init?: RequestInit): Promise<T> {
