@@ -52,7 +52,6 @@ create policy eventos_integracao_admin_select
   to authenticated
   using (empresa_id is not null and private.e_admin(empresa_id));
 
--- Registra os dados retornados ao criar um Pix. O token nunca passa pelo banco.
 create or replace function public.registrar_pix_mercado_pago(
   p_empresa_id uuid,
   p_cobranca_id uuid,
@@ -122,7 +121,7 @@ begin
   on conflict (empresa_id, provedor, nome)
   do update set
     status = 'conectada',
-    config_publica = public.integracoes.config_publica || excluded.config_publica,
+    config_publica = integracoes.config_publica || excluded.config_publica,
     ultimo_sync_em = now(),
     ultimo_erro = null;
 
@@ -139,7 +138,6 @@ $$;
 revoke all on function public.registrar_pix_mercado_pago(uuid, uuid, text, text, text, text, text, text, timestamptz, text, jsonb) from public, anon;
 grant execute on function public.registrar_pix_mercado_pago(uuid, uuid, text, text, text, text, text, text, timestamptz, text, jsonb) to authenticated;
 
--- Aplicada exclusivamente pelo backend com service_role apos consultar a Order no MP.
 create or replace function public.aplicar_order_mercado_pago(
   p_provider_order_id text,
   p_provider_payment_id text,
