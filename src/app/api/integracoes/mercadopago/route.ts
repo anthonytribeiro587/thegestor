@@ -28,14 +28,24 @@ export async function GET() {
   try {
     const context = await adminContext();
     if (context.error) return context.error;
+    const empresaId = context.membership!.empresa_id;
 
-    const { data: integration } = await context.supabase
-      .from("integracoes")
-      .select("status,config_publica,ultimo_sync_em,ultimo_erro")
-      .eq("empresa_id", context.membership!.empresa_id)
-      .eq("provedor", "mercado_pago")
-      .eq("nome", "principal")
-      .maybeSingle();
+    const [integrationResult, eventsResult] = await Promise.all([
+      context.supabase
+        .from("integracoes")
+        .select("status,config_publica,ultimo_sync_em,ultimo_erro")
+        .eq("empresa_id", empresaId)
+        .eq("provedor", "mercado_pago")
+        .eq("nome", "principal")
+        .maybeSingle(),
+      context.supabase
+        .from("eventos_integracao")
+        .select("event_id,recurso_id,tipo,acao,status_processamento,erro,recebido_em,processado_em")
+        .eq("empresa_id", empresaId)
+        .eq("provedor", "mercado_pago")
+        .order("recebido_em", { ascending: false })
+        .limit(10),
+    ]);
 
     return NextResponse.json({
       ok: true,
@@ -45,7 +55,8 @@ export async function GET() {
       serviceRoleConfigured: supabaseAdminKeyConfigured(),
       testPayerConfigured: Boolean(process.env.MERCADO_PAGO_TEST_PAYER_EMAIL),
       webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://thegestor.vercel.app"}/api/webhooks/mercadopago`,
-      integration: integration ?? null,
+      integration: integrationResult.data ?? null,
+      events: eventsResult.error ? [] : eventsResult.data ?? [],
     });
   } catch (cause) {
     return NextResponse.json({ ok: false, error: cause instanceof Error ? cause.message : "Falha ao consultar integração." }, { status: 500 });
