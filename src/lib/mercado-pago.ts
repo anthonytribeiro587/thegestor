@@ -33,13 +33,15 @@ type CreatePixInput = {
   payerFirstName?: string;
   idempotencyKey: string;
   expiration?: string;
+  processingMode?: "automatic" | "manual";
 };
 
-type MercadoPagoErrorPayload = {
+type MercadoPagoErrorPayload = Record<string, unknown> & {
   message?: string;
   error?: string;
   status?: number;
   cause?: unknown;
+  errors?: unknown;
 };
 
 function accessToken() {
@@ -63,33 +65,59 @@ export function mercadoPagoWebhookConfigured() {
   );
 }
 
-function describeMercadoPagoError(payload: MercadoPagoErrorPayload | null, status: number) {
-  if (!payload || typeof payload !== "object") return `Mercado Pago respondeu HTTP ${status}.`;
+function safeStringify(value: unknown) {
+  try {
+    return JSON.stringify(value)
+      .replace(/APP_USR-[A-Za-z0-9_-]+/g, "APP_USR-[redacted]")
+      .replace(/TEST-[A-Za-z0-9_-]+/g, "TEST-[redacted]")
+      .slice(0, 1200);
+  } catch {
+    return "";
+  }
+}
 
+function describeMercadoPagoError(payload: MercadoPagoErrorPayload | null, status: number, rawText: string, requestId: string | null) {
   const parts: string[] = [];
-  if (payload.error) parts.push(String(payload.error));
-  if (payload.message && payload.message !== payload.error) parts.push(String(payload.message));
 
-  if (Array.isArray(payload.cause)) {
-    for (const item of payload.cause.slice(0, 3)) {
-      if (!item || typeof item !== "object") continue;
-      const row = item as Record<string, unknown>;
-      const code = row.code ?? row.error ?? row.type;
-      const description = row.description ?? row.message ?? row.detail;
-      const joined = [code, description].filter(Boolean).map(String).join(": ");
-      if (joined) parts.push(joined);
+  if (payload && typeof payload === "object") {
+    if (payload.error) parts.push(String(payload.error));
+    if (payload.message && payload.message !== payload.error) parts.push(String(payload.message));
+
+    const collections = [payload.cause, payload.errors];
+    for (const collection of collections) {
+      if (Array.isArray(collection)) {
+        for (const item of collection.slice(0, 4)) {
+          if (!item || typeof item !== "object") {
+            if (item != null) parts.push(String(item));
+            continue;
+          }
+          const row = item as Record<string, unknown>;
+          const code = row.code ?? row.error ?? row.type ?? row.name;
+          const description = row.description ?? row.message ?? row.detail ?? row.reason;
+          const joined = [code, description].filter(Boolean).map(String).join(": ");
+          if (joined) parts.push(joined);
+        }
+      } else if (collection && typeof collection === "object") {
+        const row = collection as Record<string, unknown>;
+        const code = row.code ?? row.error ?? row.type ?? row.name;
+        const description = row.description ?? row.message ?? row.detail ?? row.reason;
+        const joined = [code, description].filter(Boolean).map(String).join(": ");
+        if (joined) parts.push(joined);
+      }
     }
-  } else if (payload.cause && typeof payload.cause === "object") {
-    const row = payload.cause as Record<string, unknown>;
-    const code = row.code ?? row.error ?? row.type;
-    const description = row.description ?? row.message ?? row.detail;
-    const joined = [code, description].filter(Boolean).map(String).join(": ");
-    if (joined) parts.push(joined);
+
+    if (!parts.length) {
+      const serialized = safeStringify(payload);
+      if (serialized) parts.push(serialized);
+    }
+  } else if (rawText.trim()) {
+    parts.push(rawText.trim().slice(0, 1200));
   }
 
+  const requestSuffix = requestId ? ` | request_id=${requestId}` : "";
   return parts.length
-    ? `Mercado Pago (${status}): ${parts.join(" | ")}`
-    : `Mercado Pago respondeu HTTP ${status}.`;
+    ? `Mercado Pago (${status}): ${parts.join(" | ")}${requestSuffix}`
+    : `Mercado Pago respondeu HTTP ${status}.${requestSuffix}`;
 }
 
 async function mpFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -104,10 +132,25 @@ async function mpFetch<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
 
-  const payload = await response.json().catch(() => null) as T | MercadoPagoErrorPayload | null;
-  if (!response.ok) {
-    throw new Error(describeMercadoPagoError(payload as MercadoPagoErrorPayload | null, response.status));
+  const rawText = await response.text();
+  let payload: T | MercadoPagoErrorPayload | null = null;
+  if (rawText) {
+    try {
+      payload = JSON.parse(rawText) as T | MercadoPagoErrorPayload;
+    } catch {
+      payload = null;
+    }
   }
+
+  if (!response.ok) {
+    throw new Error(describeMercadoPagoError(
+      payload as MercadoPagoErrorPayload | null,
+      response.status,
+      rawText,
+      response.headers.get("x-request-id"),
+    ));
+  }
+
   return payload as T;
 }
 
@@ -126,19 +169,22 @@ export async function createPixOrder(input: CreatePixInput) {
 
   if (input.expiration) payment.expiration_time = input.expiration;
 
-  const body = {
+  const body: Record<string, unknown> = {
     type: "online",
-    total_amount: input.amount.toFixed(2),
     external_reference: input.externalReference,
-    processing_mode: "automatic",
-    transactions: {
-      payments: [payment],
-    },
+    total_amount: input.amount.toFixed(2),
     payer: {
       email: input.payerEmail,
       ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
     },
+    transactions: {
+      payments: [payment],
+    },
   };
+
+  // O request predefinido do sandbox Pix não inclui processing_mode.
+  // Em produção usamos explicitamente o modo automático.
+  if (input.processingMode) body.processing_mode = input.processingMode;
 
   return mpFetch<MercadoPagoOrder>("/v1/orders", {
     method: "POST",
