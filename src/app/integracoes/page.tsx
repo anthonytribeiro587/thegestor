@@ -39,6 +39,19 @@ type MercadoPagoStatus = {
   error?: string;
 };
 
+type WhatsAppStatus = {
+  ok: boolean;
+  configured: boolean;
+  urlConfigured: boolean;
+  apiKeyConfigured: boolean;
+  instanceConfigured: boolean;
+  instance: string | null;
+  connection: { instance: string; state: string } | null;
+  connectionError: string | null;
+  phoneCoverage: { total: number; withPhone: number; withoutPhone: number };
+  error?: string;
+};
+
 function eventStatus(status: string) {
   if (status === "processado") return "Pago";
   if (status === "erro") return "Atrasado";
@@ -49,9 +62,16 @@ function eventStatus(status: string) {
 export default function IntegrationsPage() {
   const [tab, setTab] = useState<Tab>("Mercado Pago");
   const [mp, setMp] = useState<MercadoPagoStatus | null>(null);
+  const [wa, setWa] = useState<WhatsAppStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [waLoading, setWaLoading] = useState(true);
   const [testing, setTesting] = useState(false);
+  const [waAction, setWaAction] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [waMessage, setWaMessage] = useState<string | null>(null);
+  const [qr, setQr] = useState<string | null>(null);
+  const [testNumber, setTestNumber] = useState("");
+  const [testMessage, setTestMessage] = useState("Teste de conexão do thegestor. Se você recebeu esta mensagem, a integração está funcionando.");
 
   async function loadStatus() {
     setLoading(true);
@@ -66,7 +86,20 @@ export default function IntegrationsPage() {
     }
   }
 
-  useEffect(() => { void loadStatus(); }, []);
+  async function loadWhatsApp() {
+    setWaLoading(true);
+    try {
+      const response = await fetch("/api/integracoes/whatsapp", { cache: "no-store" });
+      const payload = await response.json() as WhatsAppStatus;
+      setWa(payload);
+    } catch {
+      setWa(null);
+    } finally {
+      setWaLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadStatus(); void loadWhatsApp(); }, []);
 
   async function testConnection() {
     setTesting(true);
@@ -84,6 +117,47 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function connectWhatsApp() {
+    setWaAction(true);
+    setWaMessage(null);
+    try {
+      const response = await fetch("/api/integracoes/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "connect" }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; qr?: string | null; pairingCode?: string | null };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível iniciar a conexão.");
+      setQr(payload.qr ?? null);
+      setWaMessage(payload.qr ? "QR Code gerado. Escaneie com o WhatsApp." : payload.pairingCode ? `Código de pareamento: ${payload.pairingCode}` : "Conexão iniciada. Atualize o status em alguns segundos.");
+      await loadWhatsApp();
+    } catch (cause) {
+      setWaMessage(cause instanceof Error ? cause.message : "Falha ao conectar WhatsApp.");
+    } finally {
+      setWaAction(false);
+    }
+  }
+
+  async function sendWhatsAppTest() {
+    setWaAction(true);
+    setWaMessage(null);
+    try {
+      const response = await fetch("/api/integracoes/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test", number: testNumber, message: testMessage }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; messageId?: string | null };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível enviar a mensagem.");
+      setWaMessage(`Mensagem de teste enviada${payload.messageId ? ` (${payload.messageId})` : ""}.`);
+      await loadWhatsApp();
+    } catch (cause) {
+      setWaMessage(cause instanceof Error ? cause.message : "Falha ao enviar teste.");
+    } finally {
+      setWaAction(false);
+    }
+  }
+
   async function copyWebhook() {
     if (!mp?.webhookUrl) return;
     await navigator.clipboard.writeText(mp.webhookUrl);
@@ -93,6 +167,7 @@ export default function IntegrationsPage() {
   const connected = mp?.integration?.status === "conectada" && mp.tokenConfigured;
   const ready = Boolean(mp?.tokenConfigured && mp?.webhookSecretConfigured && mp?.adminKeyConfigured);
   const events = mp?.events ?? [];
+  const waConnected = wa?.connection?.state === "open";
 
   return (
     <AppShell>
@@ -150,10 +225,47 @@ export default function IntegrationsPage() {
         {tab === "WhatsApp" ? (
           <div className="integration-grid">
             <div className="integration-card">
-              <div className="integration-head"><div style={{ display: "flex", gap: 11, alignItems: "center" }}><span className="integration-icon"><MessageCircle size={20} /></span><div><h3>WhatsApp / Evolution</h3><p style={{ margin: 0 }}>Lembretes, Pix e confirmações automáticas.</p></div></div><StatusBadge status="Pendente" /></div>
-              <p>Entrará depois que o fluxo Mercado Pago → baixa → fila operacional estiver validado. Assim o WhatsApp só envia mensagens com estados financeiros confiáveis.</p>
+              <div className="integration-head">
+                <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                  <span className="integration-icon"><MessageCircle size={20} /></span>
+                  <div><h3>WhatsApp / Evolution</h3><p style={{ margin: 0 }}>Conexão do número e testes antes de liberar automações.</p></div>
+                </div>
+                <StatusBadge status={waConnected ? "Conectado" : "Pendente"} />
+              </div>
+
+              {waLoading ? <div className="empty-note">Verificando Evolution API...</div> : (
+                <>
+                  <div className="integration-field"><label>URL da Evolution</label><code>{wa?.urlConfigured ? "Configurada ✓" : "Falta EVOLUTION_API_URL"}</code></div>
+                  <div className="integration-field"><label>API Key</label><code>{wa?.apiKeyConfigured ? "Configurada no servidor ✓" : "Falta EVOLUTION_API_KEY"}</code></div>
+                  <div className="integration-field"><label>Instância</label><code>{wa?.instanceConfigured ? wa.instance : "Falta EVOLUTION_INSTANCE"}</code></div>
+                  <div className="integration-field"><label>Estado</label><code>{wa?.connection?.state ?? (wa?.configured ? "não foi possível consultar" : "aguardando configuração")}</code></div>
+                  {wa?.connectionError ? <div className="form-error" style={{ marginTop: 10 }}>{wa.connectionError}</div> : null}
+                  <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+                    <button className="button primary" disabled={!wa?.configured || waAction || waConnected} onClick={() => void connectWhatsApp()}>{waAction ? "Aguarde..." : waConnected ? "WhatsApp conectado" : "Gerar QR / conectar"}</button>
+                    <button className="button secondary" disabled={waAction} onClick={() => void loadWhatsApp()}><RefreshCw size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Atualizar status</button>
+                  </div>
+                  {qr ? <div style={{ marginTop: 16, padding: 14, border: "1px solid #dbe3ef", borderRadius: 12, background: "#fff", width: "fit-content" }}><img src={qr} alt="QR Code para conectar WhatsApp" style={{ display: "block", width: 220, height: 220, objectFit: "contain" }} /></div> : null}
+                  {waMessage ? <div className={waMessage.toLowerCase().includes("falha") || waMessage.toLowerCase().includes("não") || waMessage.toLowerCase().includes("invál") ? "form-error" : "form-success"} style={{ marginTop: 12 }}>{waMessage}</div> : null}
+                </>
+              )}
             </div>
-            <div className="integration-card"><h3>Arquitetura planejada</h3><p>Evolution será implementada atrás de uma camada de provedor. Isso permite trocar depois para WhatsApp Cloud API sem alterar Clientes, Cobranças ou o motor de automações.</p></div>
+
+            <div className="integration-card">
+              <h3>Preparação da base</h3>
+              <p>Clientes ativos: <b>{wa?.phoneCoverage.total ?? 0}</b></p>
+              <p>Com telefone para WhatsApp: <b>{wa?.phoneCoverage.withPhone ?? 0}</b></p>
+              <p>Sem telefone: <b>{wa?.phoneCoverage.withoutPhone ?? 0}</b></p>
+              <p>Cliente sem telefone continua funcionando normalmente no financeiro; ele apenas fica fora das mensagens automáticas.</p>
+
+              <div style={{ borderTop: "1px solid #e5eaf2", marginTop: 16, paddingTop: 16 }}>
+                <h3>Enviar mensagem de teste</h3>
+                <div className="form-grid" style={{ marginTop: 12 }}>
+                  <label className="full"><span>Número com DDD e país</span><input value={testNumber} onChange={(event) => setTestNumber(event.target.value)} placeholder="5551999999999" /></label>
+                  <label className="full"><span>Mensagem</span><textarea value={testMessage} onChange={(event) => setTestMessage(event.target.value)} rows={4} /></label>
+                </div>
+                <button className="button primary" style={{ marginTop: 12 }} disabled={!waConnected || waAction || !testNumber.trim() || !testMessage.trim()} onClick={() => void sendWhatsAppTest()}>{waAction ? "Enviando..." : "Enviar teste"}</button>
+              </div>
+            </div>
           </div>
         ) : null}
 
