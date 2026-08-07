@@ -110,7 +110,7 @@ export default function IntegrationsPage() {
               <div className="integration-head">
                 <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
                   <span className="integration-icon"><CreditCard size={20} /></span>
-                  <div><h3>Mercado Pago</h3><p style={{ margin: 0 }}>Orders API + Pix + baixa automática por webhook.</p></div>
+                  <div><h3>Mercado Pago <small style={{ color: "#6b7a91", fontWeight: 600 }}>MP v2</small></h3><p style={{ margin: 0 }}>Orders API + Pix + baixa automática por webhook.</p></div>
                 </div>
                 <StatusBadge status={connected && ready ? "Conectado" : "Pendente"} />
               </div>
