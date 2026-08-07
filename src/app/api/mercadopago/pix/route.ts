@@ -102,9 +102,7 @@ export async function POST(request: NextRequest) {
 
     const environment = mercadoPagoEnvironment();
     const clientEmail = first(charge.clientes)?.email?.trim() || "";
-    const payerEmail = environment === "test"
-      ? "test_user_br@testuser.com"
-      : clientEmail;
+    const payerEmail = environment === "test" ? "test_user_br@testuser.com" : clientEmail;
 
     if (!payerEmail) {
       return NextResponse.json({ ok: false, error: "Cliente sem e-mail. O Mercado Pago exige e-mail do pagador para gerar o Pix em produção." }, { status: 422 });
@@ -113,8 +111,8 @@ export async function POST(request: NextRequest) {
     const idempotencyKey = randomUUID();
     const externalReference = `thegestor:${charge.id}`;
 
-    // O sandbox oficial do Mercado Pago para Pix usa valores predefinidos.
-    // Mantemos o valor real da cobrança no thegestor; R$ 50 existe apenas na Order de teste.
+    // O teste Pix da Orders API exige a requisição predefinida de R$ 50,00.
+    // O financeiro real do thegestor continua usando o saldo da cobrança.
     const providerAmount = environment === "test" ? 50 : amount;
     const order = await createPixOrder({
       amount: providerAmount,
@@ -123,6 +121,7 @@ export async function POST(request: NextRequest) {
       payerFirstName: environment === "test" ? "APRO" : undefined,
       idempotencyKey,
       expiration: environment === "production" ? "P1D" : undefined,
+      processingMode: environment === "production" ? "automatic" : undefined,
     });
     const pix = extractPix(order);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
