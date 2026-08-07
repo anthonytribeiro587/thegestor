@@ -46,9 +46,7 @@ function existingPix(row: ChargeQuery) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null) as { chargeId?: string } | null;
-    if (!body?.chargeId) {
-      return NextResponse.json({ ok: false, error: "Informe a cobrança." }, { status: 400 });
-    }
+    if (!body?.chargeId) return NextResponse.json({ ok: false, error: "Informe a cobrança." }, { status: 400 });
 
     const supabase = await createClient();
     const { data: claimsData } = await supabase.auth.getClaims();
@@ -77,10 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (chargeError) throw chargeError;
     const charge = data as unknown as ChargeQuery;
-
-    if (charge.status_pagamento === "pago") {
-      return NextResponse.json({ ok: false, error: "Esta cobrança já está paga." }, { status: 409 });
-    }
+    if (charge.status_pagamento === "pago") return NextResponse.json({ ok: false, error: "Esta cobrança já está paga." }, { status: 409 });
 
     const reusable = existingPix(charge);
     if (reusable) {
@@ -105,18 +100,14 @@ export async function POST(request: NextRequest) {
     );
     if (amount <= 0) return NextResponse.json({ ok: false, error: "Esta cobrança não possui saldo para gerar Pix." }, { status: 409 });
 
-    const clientEmail = first(charge.clientes)?.email?.trim() || "";
     const environment = mercadoPagoEnvironment();
-    const fallbackTestEmail = process.env.MERCADO_PAGO_TEST_PAYER_EMAIL?.trim() || "";
-    const payerEmail = clientEmail || (environment === "test" ? fallbackTestEmail : "");
+    const clientEmail = first(charge.clientes)?.email?.trim() || "";
+    const payerEmail = environment === "test"
+      ? process.env.MERCADO_PAGO_TEST_PAYER_EMAIL?.trim() || "test_user_br@testuser.com"
+      : clientEmail;
 
     if (!payerEmail) {
-      return NextResponse.json({
-        ok: false,
-        error: environment === "test"
-          ? "Cliente sem e-mail. Configure MERCADO_PAGO_TEST_PAYER_EMAIL no Vercel para os testes."
-          : "Cliente sem e-mail. O Mercado Pago exige e-mail do pagador para gerar o Pix.",
-      }, { status: 422 });
+      return NextResponse.json({ ok: false, error: "Cliente sem e-mail. O Mercado Pago exige e-mail do pagador para gerar o Pix em produção." }, { status: 422 });
     }
 
     const idempotencyKey = randomUUID();
@@ -125,15 +116,14 @@ export async function POST(request: NextRequest) {
       amount,
       externalReference,
       payerEmail,
+      payerFirstName: environment === "test" ? "APRO" : undefined,
       idempotencyKey,
       expiration: "P1D",
     });
     const pix = extractPix(order);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-    if (!pix.orderId || !pix.qrCode) {
-      return NextResponse.json({ ok: false, error: "Mercado Pago não retornou os dados do Pix." }, { status: 502 });
-    }
+    if (!pix.orderId || !pix.qrCode) return NextResponse.json({ ok: false, error: "Mercado Pago não retornou os dados do Pix." }, { status: 502 });
 
     const { error: rpcError } = await supabase.rpc("registrar_pix_mercado_pago", {
       p_empresa_id: membership.empresa_id,
@@ -150,11 +140,7 @@ export async function POST(request: NextRequest) {
     });
     if (rpcError) throw rpcError;
 
-    await supabase
-      .from("cobrancas")
-      .update({ external_reference: externalReference })
-      .eq("id", charge.id)
-      .eq("empresa_id", membership.empresa_id);
+    await supabase.from("cobrancas").update({ external_reference: externalReference }).eq("id", charge.id).eq("empresa_id", membership.empresa_id);
 
     return NextResponse.json({
       ok: true,
