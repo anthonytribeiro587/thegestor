@@ -13,12 +13,12 @@ type PaymentRow = {
   status: string;
   pago_em: string | null;
   criado_em: string;
-  provider_order_id: string | null;
-  provider_payment_id: string | null;
-  pix_ticket_url: string | null;
-  pix_qr_code: string | null;
-  pix_qr_code_base64: string | null;
-  expira_em: string | null;
+  provider_order_id?: string | null;
+  provider_payment_id?: string | null;
+  pix_ticket_url?: string | null;
+  pix_qr_code?: string | null;
+  pix_qr_code_base64?: string | null;
+  expira_em?: string | null;
 };
 
 type ChargeDetail = {
@@ -32,12 +32,21 @@ type ChargeDetail = {
   clientes: { nome: string; email: string | null; observacoes_operacionais: string | null } | { nome: string; email: string | null; observacoes_operacionais: string | null }[] | null;
   assinaturas: { planos: { nome: string } | { nome: string }[] | null } | { planos: { nome: string } | { nome: string }[] | null }[] | null;
   cobrancas_financeiras: { valor_original: number; valor_pago: number | null } | { valor_original: number; valor_pago: number | null }[] | null;
-  pagamentos: PaymentRow[] | null;
+  pagamentos: PaymentRow[];
 };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function readableError(cause: unknown, fallback: string) {
+  if (cause instanceof Error && cause.message) return cause.message;
+  if (cause && typeof cause === "object" && "message" in cause) {
+    const message = (cause as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
 }
 
 function label(status: string, original: number, paid: number) {
@@ -65,6 +74,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
   const [saving, setSaving] = useState(false);
   const [generatingPix, setGeneratingPix] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pixWarning, setPixWarning] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [paymentValue, setPaymentValue] = useState("");
   const [method, setMethod] = useState("manual");
@@ -73,22 +83,48 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
     if (!open || !chargeId || !empresaId) return;
     setLoading(true);
     setError(null);
+    setPixWarning(null);
+
     try {
       const supabase = createClient();
       const { data, error: queryError } = await supabase
         .from("cobrancas")
-        .select("id,competencia,vencimento,status_pagamento,pago_em,creditos_utilizados,creditos_previstos,clientes(nome,email,observacoes_operacionais),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(id,metodo,status,pago_em,criado_em,provider_order_id,provider_payment_id,pix_ticket_url,pix_qr_code,pix_qr_code_base64,expira_em)")
+        .select("id,competencia,vencimento,status_pagamento,pago_em,creditos_utilizados,creditos_previstos,clientes(nome,email,observacoes_operacionais),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago)")
         .eq("empresa_id", empresaId)
         .eq("id", chargeId)
         .single();
+
       if (queryError) throw queryError;
-      const next = data as unknown as ChargeDetail;
+
+      let payments: PaymentRow[] = [];
+      const enhancedPayments = await supabase
+        .from("pagamentos")
+        .select("id,metodo,status,pago_em,criado_em,provider_order_id,provider_payment_id,pix_ticket_url,pix_qr_code,pix_qr_code_base64,expira_em")
+        .eq("empresa_id", empresaId)
+        .eq("cobranca_id", chargeId)
+        .order("criado_em", { ascending: false });
+
+      if (enhancedPayments.error) {
+        const basicPayments = await supabase
+          .from("pagamentos")
+          .select("id,metodo,status,pago_em,criado_em")
+          .eq("empresa_id", empresaId)
+          .eq("cobranca_id", chargeId)
+          .order("criado_em", { ascending: false });
+
+        if (!basicPayments.error) payments = (basicPayments.data ?? []) as PaymentRow[];
+        setPixWarning(`A cobrança foi carregada, mas os campos do Mercado Pago ainda não estão disponíveis: ${readableError(enhancedPayments.error, "verifique a migration do Mercado Pago")}`);
+      } else {
+        payments = (enhancedPayments.data ?? []) as PaymentRow[];
+      }
+
+      const next = { ...(data as unknown as Omit<ChargeDetail, "pagamentos">), pagamentos: payments } as ChargeDetail;
       setDetail(next);
       const financial = first(next.cobrancas_financeiras);
       setPaymentValue(String(Number(financial?.valor_pago ?? 0)));
     } catch (cause) {
       setDetail(null);
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar a cobrança.");
+      setError(readableError(cause, "Não foi possível carregar a cobrança."));
     } finally {
       setLoading(false);
     }
@@ -120,7 +156,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
       setNotice(payload.reused ? "Pix existente reutilizado." : "Pix criado no Mercado Pago.");
       await loadDetail();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível gerar o Pix.");
+      setError(readableError(cause, "Não foi possível gerar o Pix."));
     } finally {
       setGeneratingPix(false);
     }
@@ -157,7 +193,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
       await onSaved();
       await loadDetail();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível registrar o pagamento.");
+      setError(readableError(cause, "Não foi possível registrar o pagamento."));
     } finally {
       setSaving(false);
     }
@@ -167,6 +203,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
     if (saving || generatingPix) return;
     setDetail(null);
     setError(null);
+    setPixWarning(null);
     setNotice(null);
     onClose();
   }
@@ -186,6 +223,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
 
         {loading ? <div className="empty-note">Carregando cobrança...</div> : null}
         {error ? <div className="form-error" role="alert" style={{ marginBottom: 12 }}>{error}</div> : null}
+        {pixWarning ? <div className="form-error" role="alert" style={{ marginBottom: 12 }}>{pixWarning}</div> : null}
         {notice ? <div className="form-success" role="status" style={{ marginBottom: 12 }}>{notice}</div> : null}
 
         {!loading && detail ? (
