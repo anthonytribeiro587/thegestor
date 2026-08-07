@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     const environment = mercadoPagoEnvironment();
     const clientEmail = first(charge.clientes)?.email?.trim() || "";
     const payerEmail = environment === "test"
-      ? process.env.MERCADO_PAGO_TEST_PAYER_EMAIL?.trim() || "test_user_br@testuser.com"
+      ? "test_user_br@testuser.com"
       : clientEmail;
 
     if (!payerEmail) {
@@ -112,13 +112,17 @@ export async function POST(request: NextRequest) {
 
     const idempotencyKey = randomUUID();
     const externalReference = `thegestor:${charge.id}`;
+
+    // O sandbox oficial do Mercado Pago para Pix usa valores predefinidos.
+    // Mantemos o valor real da cobrança no thegestor; R$ 50 existe apenas na Order de teste.
+    const providerAmount = environment === "test" ? 50 : amount;
     const order = await createPixOrder({
-      amount,
+      amount: providerAmount,
       externalReference,
       payerEmail,
       payerFirstName: environment === "test" ? "APRO" : undefined,
       idempotencyKey,
-      expiration: "P1D",
+      expiration: environment === "production" ? "P1D" : undefined,
     });
     const pix = extractPix(order);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -136,7 +140,11 @@ export async function POST(request: NextRequest) {
       p_qr_code_base64: pix.qrCodeBase64,
       p_expira_em: expiresAt,
       p_idempotency_key: idempotencyKey,
-      p_payload_resumo: safeMercadoPagoOrderSummary(order),
+      p_payload_resumo: {
+        ...safeMercadoPagoOrderSummary(order),
+        sandbox_provider_amount: environment === "test" ? providerAmount : null,
+        thegestor_balance: amount,
+      },
     });
     if (rpcError) throw rpcError;
 
@@ -145,6 +153,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       reused: false,
+      sandbox: environment === "test",
       orderId: pix.orderId,
       paymentId: pix.paymentId,
       status: pix.orderStatus,
