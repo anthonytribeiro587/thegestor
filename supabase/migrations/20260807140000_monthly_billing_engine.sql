@@ -25,20 +25,11 @@ create table if not exists public.execucoes_automacao (
 create index if not exists execucoes_automacao_tipo_iniciado_idx
   on public.execucoes_automacao(tipo, iniciado_em desc);
 
+-- Este log e global ao motor, nao pertence a um tenant especifico.
+-- Fica protegido por RLS sem policy para authenticated e e acessado somente pelo backend service_role.
 alter table public.execucoes_automacao enable row level security;
-
 drop policy if exists execucoes_automacao_admin_select on public.execucoes_automacao;
-create policy execucoes_automacao_admin_select
-on public.execucoes_automacao
-for select
-to authenticated
-using (exists (
-  select 1
-  from public.usuarios_empresa ue
-  where ue.user_id = auth.uid()
-    and ue.ativo = true
-    and ue.papel = 'admin'
-));
+revoke all on public.execucoes_automacao from anon, authenticated;
 
 create table if not exists public.mensagens_cobranca (
   id uuid primary key default gen_random_uuid(),
@@ -212,7 +203,6 @@ $$;
 revoke all on function public.gerar_cobrancas_mensais_sistema(date) from public, anon, authenticated;
 grant execute on function public.gerar_cobrancas_mensais_sistema(date) to service_role;
 
-grant select on public.execucoes_automacao to authenticated;
 grant select on public.mensagens_cobranca to authenticated;
 
 notify pgrst, 'reload schema';
