@@ -24,6 +24,8 @@ type MercadoPagoStatus = {
   environment: "test" | "production";
   tokenConfigured: boolean;
   webhookConfigured: boolean;
+  webhookSecretConfigured: boolean;
+  adminKeyConfigured: boolean;
   serviceRoleConfigured: boolean;
   testPayerConfigured: boolean;
   webhookUrl: string;
@@ -89,7 +91,7 @@ export default function IntegrationsPage() {
   }
 
   const connected = mp?.integration?.status === "conectada" && mp.tokenConfigured;
-  const ready = Boolean(mp?.tokenConfigured && mp?.webhookConfigured && mp?.serviceRoleConfigured);
+  const ready = Boolean(mp?.tokenConfigured && mp?.webhookSecretConfigured && mp?.adminKeyConfigured);
   const events = mp?.events ?? [];
 
   return (
@@ -110,15 +112,16 @@ export default function IntegrationsPage() {
                   <span className="integration-icon"><CreditCard size={20} /></span>
                   <div><h3>Mercado Pago</h3><p style={{ margin: 0 }}>Orders API + Pix + baixa automática por webhook.</p></div>
                 </div>
-                <StatusBadge status={connected ? "Conectado" : "Pendente"} />
+                <StatusBadge status={connected && ready ? "Conectado" : "Pendente"} />
               </div>
 
               {loading ? <div className="empty-note">Verificando configuração...</div> : (
                 <>
                   <div className="integration-field"><label>Ambiente</label><code>{mp?.environment === "production" ? "Produção" : "Teste"}</code></div>
-                  <div className="integration-field"><label>Access Token</label><code>{mp?.tokenConfigured ? "Configurado no servidor ✓" : "Pendente no Vercel"}</code></div>
-                  <div className="integration-field"><label>Webhook + chave de backend</label><code>{mp?.webhookConfigured ? "Pronto para validar notificações ✓" : "Configuração incompleta"}</code></div>
-                  {mp?.environment === "test" ? <div className="integration-field"><label>E-mail do pagador de teste</label><code>{mp?.testPayerConfigured ? "Configurado ✓" : "MERCADO_PAGO_TEST_PAYER_EMAIL pendente"}</code></div> : null}
+                  <div className="integration-field"><label>Access Token</label><code>{mp?.tokenConfigured ? "Configurado no servidor ✓" : "Falta MERCADO_PAGO_ACCESS_TOKEN"}</code></div>
+                  <div className="integration-field"><label>Assinatura secreta do webhook</label><code>{mp?.webhookSecretConfigured ? "Configurada ✓" : "Falta MERCADO_PAGO_WEBHOOK_SECRET"}</code></div>
+                  <div className="integration-field"><label>Chave privada do Supabase</label><code>{mp?.adminKeyConfigured ? "Configurada ✓" : "Falta SUPABASE_SECRET_KEY (ou service_role legado)"}</code></div>
+                  {mp?.environment === "test" ? <div className="integration-field"><label>Pagador de teste</label><code>Sandbox oficial APRO ✓</code></div> : null}
                   <div className="integration-field"><label>Webhook do thegestor</label><code>{mp?.webhookUrl ?? "—"}</code></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
                     <button className="button primary" disabled={!mp?.tokenConfigured || testing} onClick={() => void testConnection()}>{testing ? "Testando..." : "Testar conexão"}</button>
@@ -133,12 +136,13 @@ export default function IntegrationsPage() {
             <div className="integration-card">
               <h3>Checklist para liberar o Pix</h3>
               <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-                <div style={{ display: "flex", gap: 9 }}><CheckCircle2 size={17} color={mp?.tokenConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Credencial privada do Mercado Pago no Vercel.</p></div>
-                <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.webhookConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Assinatura secreta do webhook + Supabase Secret key no servidor.</p></div>
-                <div style={{ display: "flex", gap: 9 }}><Webhook size={17} color={connected ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>No Mercado Pago, habilitar o evento <b>Order (Mercado Pago)</b> apontando para a URL acima.</p></div>
+                <div style={{ display: "flex", gap: 9 }}><CheckCircle2 size={17} color={mp?.tokenConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Access Token privado do Mercado Pago no Vercel.</p></div>
+                <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.webhookSecretConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Assinatura secreta copiada da configuração de Webhooks do Mercado Pago.</p></div>
+                <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.adminKeyConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Supabase Secret key disponível somente no backend.</p></div>
+                <div style={{ display: "flex", gap: 9 }}><Webhook size={17} color={ready ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Evento <b>Order (Mercado Pago)</b> apontando para a URL do webhook acima.</p></div>
               </div>
-              <p style={{ marginTop: 16 }}><b>Status técnico:</b> {ready ? "backend pronto para teste" : "aguardando variáveis de ambiente"}.</p>
-              <p>Depois disso, o botão <b>Gerar Pix</b> fica disponível nos detalhes de cada cobrança. O webhook consulta a order no Mercado Pago antes de marcar como paga.</p>
+              <p style={{ marginTop: 16 }}><b>Status técnico:</b> {ready ? "backend pronto para teste" : "veja exatamente o item pendente ao lado"}.</p>
+              <p>Um teste do Mercado Pago retorna <b>401</b> quando a assinatura recebida não pode ser validada. Depois de configurar a assinatura secreta correta e redeployar, o endpoint passa a aceitar somente notificações autenticadas pelo Mercado Pago.</p>
             </div>
           </div>
         ) : null}
