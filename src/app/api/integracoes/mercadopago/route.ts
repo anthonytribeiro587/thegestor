@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMercadoPagoAccount, mercadoPagoConfigured, mercadoPagoEnvironment, mercadoPagoWebhookConfigured } from "@/lib/mercado-pago";
+import { supabaseAdminKeyConfigured } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 async function adminContext() {
@@ -41,7 +42,7 @@ export async function GET() {
       environment: mercadoPagoEnvironment(),
       tokenConfigured: mercadoPagoConfigured(),
       webhookConfigured: mercadoPagoWebhookConfigured(),
-      serviceRoleConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      serviceRoleConfigured: supabaseAdminKeyConfigured(),
       testPayerConfigured: Boolean(process.env.MERCADO_PAGO_TEST_PAYER_EMAIL),
       webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://thegestor.vercel.app"}/api/webhooks/mercadopago`,
       integration: integration ?? null,
