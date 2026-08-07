@@ -29,6 +29,7 @@ export async function GET() {
     const context = await adminContext();
     if (context.error) return context.error;
     const empresaId = context.membership!.empresa_id;
+    const environment = mercadoPagoEnvironment();
 
     const [integrationResult, eventsResult] = await Promise.all([
       context.supabase
@@ -49,11 +50,11 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      environment: mercadoPagoEnvironment(),
+      environment,
       tokenConfigured: mercadoPagoConfigured(),
       webhookConfigured: mercadoPagoWebhookConfigured(),
       serviceRoleConfigured: supabaseAdminKeyConfigured(),
-      testPayerConfigured: Boolean(process.env.MERCADO_PAGO_TEST_PAYER_EMAIL),
+      testPayerConfigured: environment === "test" || Boolean(process.env.MERCADO_PAGO_TEST_PAYER_EMAIL),
       webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://thegestor.vercel.app"}/api/webhooks/mercadopago`,
       integration: integrationResult.data ?? null,
       events: eventsResult.error ? [] : eventsResult.data ?? [],
