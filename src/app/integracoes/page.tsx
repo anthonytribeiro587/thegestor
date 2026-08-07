@@ -8,6 +8,17 @@ import { StatusBadge } from "@/components/status-badge";
 
 type Tab = "Mercado Pago" | "WhatsApp" | "Webhooks";
 
+type IntegrationEvent = {
+  event_id: string;
+  recurso_id: string | null;
+  tipo: string | null;
+  acao: string | null;
+  status_processamento: string;
+  erro: string | null;
+  recebido_em: string;
+  processado_em: string | null;
+};
+
 type MercadoPagoStatus = {
   ok: boolean;
   environment: "test" | "production";
@@ -22,8 +33,16 @@ type MercadoPagoStatus = {
     ultimo_sync_em: string | null;
     ultimo_erro: string | null;
   };
+  events?: IntegrationEvent[];
   error?: string;
 };
+
+function eventStatus(status: string) {
+  if (status === "processado") return "Pago";
+  if (status === "erro") return "Atrasado";
+  if (status === "ignorado") return "Pendente";
+  return "A vencer";
+}
 
 export default function IntegrationsPage() {
   const [tab, setTab] = useState<Tab>("Mercado Pago");
@@ -71,6 +90,7 @@ export default function IntegrationsPage() {
 
   const connected = mp?.integration?.status === "conectada" && mp.tokenConfigured;
   const ready = Boolean(mp?.tokenConfigured && mp?.webhookConfigured && mp?.serviceRoleConfigured);
+  const events = mp?.events ?? [];
 
   return (
     <AppShell>
@@ -97,7 +117,7 @@ export default function IntegrationsPage() {
                 <>
                   <div className="integration-field"><label>Ambiente</label><code>{mp?.environment === "production" ? "Produção" : "Teste"}</code></div>
                   <div className="integration-field"><label>Access Token</label><code>{mp?.tokenConfigured ? "Configurado no servidor ✓" : "Pendente no Vercel"}</code></div>
-                  <div className="integration-field"><label>Webhook + service role</label><code>{mp?.webhookConfigured ? "Pronto para validar notificações ✓" : "Configuração incompleta"}</code></div>
+                  <div className="integration-field"><label>Webhook + chave de backend</label><code>{mp?.webhookConfigured ? "Pronto para validar notificações ✓" : "Configuração incompleta"}</code></div>
                   {mp?.environment === "test" ? <div className="integration-field"><label>E-mail do pagador de teste</label><code>{mp?.testPayerConfigured ? "Configurado ✓" : "MERCADO_PAGO_TEST_PAYER_EMAIL pendente"}</code></div> : null}
                   <div className="integration-field"><label>Webhook do thegestor</label><code>{mp?.webhookUrl ?? "—"}</code></div>
                   <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
@@ -114,7 +134,7 @@ export default function IntegrationsPage() {
               <h3>Checklist para liberar o Pix</h3>
               <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
                 <div style={{ display: "flex", gap: 9 }}><CheckCircle2 size={17} color={mp?.tokenConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Credencial privada do Mercado Pago no Vercel.</p></div>
-                <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.webhookConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Assinatura secreta do webhook + Supabase service role no servidor.</p></div>
+                <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.webhookConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Assinatura secreta do webhook + Supabase Secret key no servidor.</p></div>
                 <div style={{ display: "flex", gap: 9 }}><Webhook size={17} color={connected ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>No Mercado Pago, habilitar o evento <b>Order (Mercado Pago)</b> apontando para a URL acima.</p></div>
               </div>
               <p style={{ marginTop: 16 }}><b>Status técnico:</b> {ready ? "backend pronto para teste" : "aguardando variáveis de ambiente"}.</p>
@@ -134,9 +154,14 @@ export default function IntegrationsPage() {
         ) : null}
 
         {tab === "Webhooks" ? (
-          <div className="integration-grid">
-            <div className="integration-card"><div className="integration-head"><div style={{ display: "flex", gap: 11, alignItems: "center" }}><span className="integration-icon"><Webhook size={20} /></span><div><h3>Eventos recebidos</h3><p style={{ margin: 0 }}>Os eventos Mercado Pago já possuem persistência idempotente no backend.</p></div></div><StatusBadge status={mp?.webhookConfigured ? "Conectado" : "Pendente"} /></div><p>Na próxima etapa desta tela exibiremos evento, recurso, ação, status de processamento e erro técnico sem expor tokens.</p></div>
-            <div className="integration-card"><h3>Confiabilidade</h3><p>Uma notificação repetida usa o ID do evento para não dar baixa duas vezes. Antes de atualizar a cobrança, o backend consulta novamente a Order diretamente na API do Mercado Pago.</p></div>
+          <div style={{ padding: 18 }}>
+            <div className="integration-card">
+              <div className="integration-head"><div style={{ display: "flex", gap: 11, alignItems: "center" }}><span className="integration-icon"><Webhook size={20} /></span><div><h3>Eventos Mercado Pago</h3><p style={{ margin: 0 }}>Histórico técnico sem expor credenciais ou payloads sensíveis.</p></div></div><StatusBadge status={mp?.webhookConfigured ? "Conectado" : "Pendente"} /></div>
+              {events.length ? (
+                <div className="table-wrap" style={{ marginTop: 16 }}><table className="admin-table"><thead><tr><th>Recebido</th><th>Ação</th><th>Order</th><th>Status</th><th>Erro</th></tr></thead><tbody>{events.map((event) => <tr key={event.event_id}><td>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(event.recebido_em))}</td><td>{event.acao ?? event.tipo ?? "—"}</td><td><code>{event.recurso_id ?? "—"}</code></td><td><StatusBadge status={eventStatus(event.status_processamento)} /></td><td>{event.erro ?? "—"}</td></tr>)}</tbody></table></div>
+              ) : <div className="empty-note">Nenhum webhook recebido ainda.</div>}
+            </div>
+            <div className="integration-card" style={{ marginTop: 16 }}><h3>Confiabilidade</h3><p>Eventos repetidos são ignorados pelo ID da notificação. Antes de dar baixa, o backend consulta a Order diretamente no Mercado Pago e só considera pago quando o status é <b>processed / accredited</b>.</p></div>
           </div>
         ) : null}
       </section>
