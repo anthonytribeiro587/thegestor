@@ -35,6 +35,13 @@ type CreatePixInput = {
   expiration?: string;
 };
 
+type MercadoPagoErrorPayload = {
+  message?: string;
+  error?: string;
+  status?: number;
+  cause?: unknown;
+};
+
 function accessToken() {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN;
   if (!token) throw new Error("MERCADO_PAGO_ACCESS_TOKEN não configurado.");
@@ -56,6 +63,35 @@ export function mercadoPagoWebhookConfigured() {
   );
 }
 
+function describeMercadoPagoError(payload: MercadoPagoErrorPayload | null, status: number) {
+  if (!payload || typeof payload !== "object") return `Mercado Pago respondeu HTTP ${status}.`;
+
+  const parts: string[] = [];
+  if (payload.error) parts.push(String(payload.error));
+  if (payload.message && payload.message !== payload.error) parts.push(String(payload.message));
+
+  if (Array.isArray(payload.cause)) {
+    for (const item of payload.cause.slice(0, 3)) {
+      if (!item || typeof item !== "object") continue;
+      const row = item as Record<string, unknown>;
+      const code = row.code ?? row.error ?? row.type;
+      const description = row.description ?? row.message ?? row.detail;
+      const joined = [code, description].filter(Boolean).map(String).join(": ");
+      if (joined) parts.push(joined);
+    }
+  } else if (payload.cause && typeof payload.cause === "object") {
+    const row = payload.cause as Record<string, unknown>;
+    const code = row.code ?? row.error ?? row.type;
+    const description = row.description ?? row.message ?? row.detail;
+    const joined = [code, description].filter(Boolean).map(String).join(": ");
+    if (joined) parts.push(joined);
+  }
+
+  return parts.length
+    ? `Mercado Pago (${status}): ${parts.join(" | ")}`
+    : `Mercado Pago respondeu HTTP ${status}.`;
+}
+
 async function mpFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -68,12 +104,9 @@ async function mpFetch<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
   });
 
-  const payload = await response.json().catch(() => null) as T | { message?: string; error?: string; cause?: unknown } | null;
+  const payload = await response.json().catch(() => null) as T | MercadoPagoErrorPayload | null;
   if (!response.ok) {
-    const message = payload && typeof payload === "object" && "message" in payload && payload.message
-      ? String(payload.message)
-      : `Mercado Pago respondeu HTTP ${response.status}.`;
-    throw new Error(message);
+    throw new Error(describeMercadoPagoError(payload as MercadoPagoErrorPayload | null, response.status));
   }
   return payload as T;
 }
@@ -83,22 +116,23 @@ export async function getMercadoPagoAccount() {
 }
 
 export async function createPixOrder(input: CreatePixInput) {
+  const payment: Record<string, unknown> = {
+    amount: input.amount.toFixed(2),
+    payment_method: {
+      id: "pix",
+      type: "bank_transfer",
+    },
+  };
+
+  if (input.expiration) payment.expiration_time = input.expiration;
+
   const body = {
     type: "online",
     total_amount: input.amount.toFixed(2),
     external_reference: input.externalReference,
     processing_mode: "automatic",
     transactions: {
-      payments: [
-        {
-          amount: input.amount.toFixed(2),
-          payment_method: {
-            id: "pix",
-            type: "bank_transfer",
-          },
-          expiration_time: input.expiration ?? "P1D",
-        },
-      ],
+      payments: [payment],
     },
     payer: {
       email: input.payerEmail,
