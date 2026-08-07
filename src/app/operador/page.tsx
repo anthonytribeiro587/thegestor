@@ -65,6 +65,18 @@ function taskLabel(tipo: string) {
   return "Acompanhamento";
 }
 
+function activityLabel(item: ActivityRow) {
+  if (item.status === "concluida") return "Tarefa concluída";
+  if (item.status === "cancelada") return "Tarefa cancelada";
+  return taskLabel(item.tipo);
+}
+
+function activityTone(item: ActivityRow) {
+  if (item.status === "concluida") return "success";
+  if (item.status === "cancelada") return "warning";
+  return item.tipo === "novo_cliente" ? "warning" : "info";
+}
+
 export default function OperatorPage() {
   const [queue, setQueue] = useState<QueueRow[]>([]);
   const [activities, setActivities] = useState<ActivityRow[]>([]);
@@ -175,7 +187,7 @@ export default function OperatorPage() {
         </div>
         <aside className="card" style={{ alignSelf: "start" }}>
           <div className="card-header"><h2>Últimas atividades</h2></div>
-          {activities.length ? <div className="queue">{activities.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${item.status === "concluida" ? "success" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.status === "concluida" ? "Tarefa concluída" : taskLabel(item.tipo)}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div></div>)}</div> : !loading ? <div className="empty-note">Nenhuma atividade registrada.</div> : null}
+          {activities.length ? <div className="queue">{activities.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${activityTone(item)}`}>{index + 1}</div><div className="queue-copy"><b>{activityLabel(item)}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div></div>)}</div> : !loading ? <div className="empty-note">Nenhuma atividade registrada.</div> : null}
         </aside>
       </section>
     </AppShell>
