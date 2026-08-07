@@ -30,6 +30,7 @@ type CreatePixInput = {
   amount: number;
   externalReference: string;
   payerEmail: string;
+  payerFirstName?: string;
   idempotencyKey: string;
   expiration?: string;
 };
@@ -101,6 +102,7 @@ export async function createPixOrder(input: CreatePixInput) {
     },
     payer: {
       email: input.payerEmail,
+      ...(input.payerFirstName ? { first_name: input.payerFirstName } : {}),
     },
   };
 
