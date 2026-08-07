@@ -109,14 +109,16 @@ export async function POST(request: NextRequest) {
     }
 
     const idempotencyKey = randomUUID();
-    const externalReference = `thegestor:${charge.id}`;
+    const localExternalReference = `thegestor:${charge.id}`;
 
-    // O teste Pix da Orders API exige a requisição predefinida de R$ 50,00.
-    // O financeiro real do thegestor continua usando o saldo da cobrança.
+    // O sandbox da Orders API para Pix exige os valores predefinidos da documentação.
+    // Em produção usamos a referência real da cobrança para reconciliação.
     const providerAmount = environment === "test" ? 50 : amount;
+    const providerExternalReference = environment === "test" ? "ext_ref_1234" : localExternalReference;
+
     const order = await createPixOrder({
       amount: providerAmount,
-      externalReference,
+      externalReference: providerExternalReference,
       payerEmail,
       payerFirstName: environment === "test" ? "APRO" : undefined,
       idempotencyKey,
@@ -142,12 +144,18 @@ export async function POST(request: NextRequest) {
       p_payload_resumo: {
         ...safeMercadoPagoOrderSummary(order),
         sandbox_provider_amount: environment === "test" ? providerAmount : null,
+        sandbox_external_reference: environment === "test" ? providerExternalReference : null,
         thegestor_balance: amount,
+        thegestor_external_reference: localExternalReference,
       },
     });
     if (rpcError) throw rpcError;
 
-    await supabase.from("cobrancas").update({ external_reference: externalReference }).eq("id", charge.id).eq("empresa_id", membership.empresa_id);
+    await supabase
+      .from("cobrancas")
+      .update({ external_reference: localExternalReference })
+      .eq("id", charge.id)
+      .eq("empresa_id", membership.empresa_id);
 
     return NextResponse.json({
       ok: true,
