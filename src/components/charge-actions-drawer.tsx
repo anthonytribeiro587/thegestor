@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Copy, ExternalLink, QrCode, X } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, QrCode, RefreshCw, X } from "lucide-react";
 import { formatDateBR } from "@/lib/billing";
 import { currency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -73,6 +73,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generatingPix, setGeneratingPix] = useState(false);
+  const [syncingPix, setSyncingPix] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pixWarning, setPixWarning] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -162,6 +163,41 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
     }
   }
 
+  async function syncPixStatus() {
+    if (!detail || syncingPix || !pix?.provider_order_id) return;
+    setSyncingPix(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/mercadopago/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chargeId: detail.id }),
+      });
+      const payload = await response.json() as {
+        ok?: boolean;
+        error?: string;
+        paid?: boolean;
+        status?: string;
+        statusDetail?: string;
+      };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível sincronizar a Order.");
+
+      if (payload.paid) {
+        setNotice("Pagamento confirmado pelo Mercado Pago. Cobrança baixada automaticamente.");
+      } else {
+        setNotice(`Status atualizado: ${payload.status ?? "pendente"}${payload.statusDetail ? ` / ${payload.statusDetail}` : ""}.`);
+      }
+
+      await onSaved();
+      await loadDetail();
+    } catch (cause) {
+      setError(readableError(cause, "Não foi possível sincronizar o status do Pix."));
+    } finally {
+      setSyncingPix(false);
+    }
+  }
+
   async function copyPix() {
     if (!pix?.pix_qr_code) return;
     await navigator.clipboard.writeText(pix.pix_qr_code);
@@ -200,7 +236,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
   }
 
   function close() {
-    if (saving || generatingPix) return;
+    if (saving || generatingPix || syncingPix) return;
     setDetail(null);
     setError(null);
     setPixWarning(null);
@@ -218,7 +254,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
       <aside className={`drawer ${styles.drawer}`} role="dialog" aria-modal="true" aria-label="Detalhes da cobrança">
         <div className="drawer-header">
           <div><h2>{client?.nome ?? "Detalhes da cobrança"}</h2><p>Pagamento, vencimento e créditos desta competência</p></div>
-          <button className="icon-button" onClick={close} disabled={saving || generatingPix} aria-label="Fechar"><X size={20} /></button>
+          <button className="icon-button" onClick={close} disabled={saving || generatingPix || syncingPix} aria-label="Fechar"><X size={20} /></button>
         </div>
 
         {loading ? <div className="empty-note">Carregando cobrança...</div> : null}
@@ -252,6 +288,7 @@ export function ChargeActionsDrawer({ open, chargeId, empresaId, onClose, onSave
                       <div className={styles.balance}><b>Order:</b> {pix.provider_order_id}<br />{pix.expira_em ? <><b>Validade:</b> {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(pix.expira_em))}</> : null}</div>
                       <div className={styles.actions}>
                         <button className="button primary" type="button" onClick={() => void copyPix()} disabled={!pix.pix_qr_code}><Copy size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Copiar Pix</button>
+                        <button className="button ghost" type="button" onClick={() => void syncPixStatus()} disabled={syncingPix}><RefreshCw size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />{syncingPix ? "Sincronizando..." : "Sincronizar status"}</button>
                         {pix.pix_ticket_url ? <a className="button ghost" href={pix.pix_ticket_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center" }}><ExternalLink size={14} style={{ marginRight: 6 }} />Abrir pagamento</a> : null}
                       </div>
                     </div>
