@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Eye, Pencil, Plus, Search, Upload, UserRoundCheck, UserRoundPlus, UserRoundX } from "lucide-react";
+import { AlertTriangle, Eye, Pencil, Plus, Search, Upload, UserRoundCheck, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ClientActionsDrawer } from "@/components/client-actions-drawer";
 import { ClientDrawer } from "@/components/client-drawer";
@@ -12,9 +12,11 @@ import { StatusBadge } from "@/components/status-badge";
 import { operationalChargeStatus, todayInSaoPaulo } from "@/lib/billing";
 import { createClient } from "@/lib/supabase/client";
 import type { ClientStatus } from "@/lib/types";
+import styles from "./clientes.module.css";
 
 type Filter = "Todos" | "Ativos" | "Vencidos" | "Cancelados";
 type ActionMode = "view" | "edit";
+type DayFilter = "all" | number;
 
 type DbSubscription = {
   dia_vencimento: number;
@@ -59,13 +61,16 @@ type UiClient = {
   dueDay: number | null;
   status: ClientStatus;
   lastPayment: string;
-  createdAt: string;
   baseStatus: string;
 };
 
+function first<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
 function planName(subscription?: DbSubscription) {
-  if (!subscription?.planos) return "Sem plano";
-  return Array.isArray(subscription.planos) ? subscription.planos[0]?.nome ?? "Sem plano" : subscription.planos.nome;
+  return first(subscription?.planos)?.nome ?? "Sem plano";
 }
 
 function cycleLabel(subscription?: DbSubscription) {
@@ -100,7 +105,6 @@ function mapClient(row: DbClient, today: string): UiClient {
     dueDay: activeSubscription?.dia_vencimento ?? null,
     status,
     lastPayment: paymentDates[0] ? new Intl.DateTimeFormat("pt-BR").format(new Date(paymentDates[0])) : "—",
-    createdAt: row.criado_em,
     baseStatus: row.status,
   };
 }
@@ -113,6 +117,7 @@ export default function ClientsPage() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("Todos");
+  const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [clients, setClients] = useState<UiClient[]>([]);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,35 +162,106 @@ export default function ClientsPage() {
     setActionOpen(true);
   }
 
-  const filtered = useMemo(() => clients.filter((client) => {
+  const baseFiltered = useMemo(() => clients.filter((client) => {
     const matchesQuery = `${client.name} ${client.phone ?? ""} ${client.email ?? ""}`.toLowerCase().includes(query.toLowerCase());
     const matchesFilter = filter === "Todos" || (filter === "Ativos" && client.status === "Ativo") || (filter === "Vencidos" && client.status === "Vencido") || (filter === "Cancelados" && client.status === "Cancelado");
     return matchesQuery && matchesFilter;
   }), [clients, query, filter]);
 
+  const visibleClients = useMemo(() => baseFiltered
+    .filter((client) => dayFilter === "all" || client.dueDay === dayFilter)
+    .sort((a, b) => (a.dueDay ?? 99) - (b.dueDay ?? 99) || a.name.localeCompare(b.name, "pt-BR")), [baseFiltered, dayFilter]);
+
+  const groups = useMemo(() => {
+    const grouped = new Map<number, UiClient[]>();
+    visibleClients.forEach((client) => {
+      const day = client.dueDay ?? 0;
+      grouped.set(day, [...(grouped.get(day) ?? []), client]);
+    });
+    return [...grouped.entries()].sort(([a], [b]) => a - b);
+  }, [visibleClients]);
+
+  const dayCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    baseFiltered.forEach((client) => {
+      if (client.dueDay) counts.set(client.dueDay, (counts.get(client.dueDay) ?? 0) + 1);
+    });
+    return counts;
+  }, [baseFiltered]);
+
   const activeCount = clients.filter((client) => client.baseStatus === "ativo").length;
-  const cancelledCount = clients.filter((client) => client.status === "Cancelado").length;
   const overdueCount = clients.filter((client) => client.status === "Vencido").length;
-  const now = new Date();
-  const newThisMonth = clients.filter((client) => {
-    const created = new Date(client.createdAt);
-    return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
-  }).length;
+  const creditsUsed = clients.reduce((sum, client) => sum + client.creditsUsed, 0);
+  const creditsExpected = clients.reduce((sum, client) => sum + client.creditsExpected, 0);
 
   return (
     <AppShell>
-      <PageHeader title="Clientes" subtitle="Cadastre e acompanhe seus clientes" action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button className="button secondary" onClick={() => setImportOpen(true)} disabled={!empresaId}><Upload size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />Sincronizar planilha</button><button className="button primary" onClick={() => setDrawerOpen(true)} disabled={!empresaId}><Plus size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Novo cliente</button></div>} />
+      <PageHeader
+        title="Clientes"
+        subtitle="Organize a base pelo dia de vencimento e acompanhe renovações"
+        action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button className="button secondary" onClick={() => setImportOpen(true)} disabled={!empresaId}><Upload size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />Sincronizar planilha</button><button className="button primary" onClick={() => setDrawerOpen(true)} disabled={!empresaId}><Plus size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Novo cliente</button></div>}
+      />
+
       <section className="stats-grid">
         <StatCard title="Clientes ativos" value={String(activeCount)} helper="Base atual" icon={UserRoundCheck} />
-        <StatCard title="Cancelados" value={String(cancelledCount)} helper="Base atual" icon={UserRoundX} tone="slate" />
         <StatCard title="Com pagamento vencido" value={String(overdueCount)} helper="Exigem acompanhamento" icon={AlertTriangle} tone="orange" />
-        <StatCard title="Novos este mês" value={String(newThisMonth)} helper="Cadastros do período" icon={UserRoundPlus} tone="green" />
+        <StatCard title="Créditos utilizados" value={String(creditsUsed)} helper="Já consumidos no mês" icon={WalletCards} tone="green" />
+        <StatCard title="Créditos previstos" value={String(creditsExpected)} helper="Ainda devem ser consumidos" icon={WalletCards} tone="slate" />
       </section>
-      <section className="card">
-        <div className="toolbar"><label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, telefone ou e-mail..." /></label><div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div></div>
-        {error ? <div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div> : null}
-        {loading ? <div className="empty-note">Carregando clientes...</div> : filtered.length ? <div className="table-wrap"><table className="admin-table"><thead><tr><th>Cliente</th><th>Plano</th><th>Créditos no mês</th><th>Ciclo</th><th>Vencimento</th><th>Status</th><th>Último pagamento</th><th>Ações</th></tr></thead><tbody>{filtered.map((client) => <tr key={client.id}><td><div className="client-cell"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span>{client.name}</div></td><td>{client.plan}</td><td><span title={`${client.credits} crédito(s) no ciclo`}>{client.creditsUsed} usados · {client.creditsExpected} previstos</span></td><td>{client.cycle}</td><td>{client.dueDay ? `Dia ${client.dueDay}` : "—"}</td><td><StatusBadge status={client.status} /></td><td>{client.lastPayment}</td><td><div className="action-set"><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div></td></tr>)}</tbody></table></div> : !error ? <div className="empty-note">Nenhum cliente encontrado.</div> : null}
+
+      <section className={styles.dayPanel}>
+        <div className={styles.dayPanelHead}>
+          <div><h2>Vencimentos por dia</h2><p>Mesma lógica da sua planilha: escolha um dia para focar somente nos clientes daquele vencimento.</p></div>
+          <div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div>
+        </div>
+        <div className={styles.dayNav}>
+          <button className={`${styles.dayButton} ${styles.allButton} ${dayFilter === "all" ? styles.dayButtonActive : ""}`} onClick={() => setDayFilter("all")}><b>Todos</b><small>{baseFiltered.length}</small></button>
+          {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
+            const count = dayCounts.get(day) ?? 0;
+            return <button key={day} disabled={!count} className={`${styles.dayButton} ${dayFilter === day ? styles.dayButtonActive : ""} ${!count ? styles.dayButtonEmpty : ""}`} onClick={() => setDayFilter(day)}><b>{day}</b><small>{count ? `${count} cli.` : "—"}</small></button>;
+          })}
+        </div>
       </section>
+
+      <section className="card" style={{ marginBottom: 14 }}>
+        <div className="toolbar">
+          <label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente..." /></label>
+          <span style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 11 }}>{visibleClients.length} cliente(s) exibido(s)</span>
+        </div>
+      </section>
+
+      {error ? <div className="card"><div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div></div> : null}
+      {loading ? <div className="card"><div className="empty-note">Carregando clientes...</div></div> : null}
+
+      {!loading && !error ? (
+        <div className={styles.listPanel}>
+          {groups.length ? groups.map(([day, group]) => {
+            const groupUsed = group.reduce((sum, client) => sum + client.creditsUsed, 0);
+            const groupExpected = group.reduce((sum, client) => sum + client.creditsExpected, 0);
+            return (
+              <section key={day} className={styles.dayGroup}>
+                <div className={styles.dayGroupHead}>
+                  <div className={styles.dayNumber}>{day || "—"}</div>
+                  <div className={styles.dayTitle}><b>{day ? `Vencimento dia ${day}` : "Sem vencimento definido"}</b><small>{group.length} cliente(s) neste dia</small></div>
+                  <div className={styles.dayCreditSummary}><span className={styles.summaryPill}>Usados <strong>{groupUsed}</strong></span><span className={styles.summaryPill}>Previstos <strong>{groupExpected}</strong></span></div>
+                </div>
+                <div className={styles.clientHeader}><span>Cliente</span><span>Plano</span><span>Créditos no mês</span><span>Ciclo</span><span>Status</span><span style={{ textAlign: "right" }}>Ações</span></div>
+                {group.map((client) => (
+                  <div className={styles.clientRow} key={client.id}>
+                    <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>Último pagamento: {client.lastPayment}</small></div></div>
+                    <span>{client.plan}</span>
+                    <div className={styles.credits}><span className={styles.creditUsed}>{client.creditsUsed} usado(s)</span><span className={styles.creditExpected}>{client.creditsExpected} previsto(s)</span></div>
+                    <span>{client.cycle}</span>
+                    <StatusBadge status={client.status} />
+                    <div className={styles.actions}><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div>
+                  </div>
+                ))}
+              </section>
+            );
+          }) : <div className={styles.dayGroup}><div className={styles.empty}>Nenhum cliente encontrado para este filtro.</div></div>}
+        </div>
+      ) : null}
+
       <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} empresaId={empresaId} onSaved={loadClients} />
       <ClientImportDrawer open={importOpen} onClose={() => setImportOpen(false)} empresaId={empresaId} onImported={loadClients} />
       <ClientActionsDrawer open={actionOpen} mode={actionMode} clientId={selectedClientId} empresaId={empresaId} onClose={() => { setActionOpen(false); setSelectedClientId(null); }} onSaved={loadClients} />
