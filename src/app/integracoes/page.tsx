@@ -39,6 +39,28 @@ type MercadoPagoStatus = {
   error?: string;
 };
 
+type WhatsAppAutomation = {
+  whatsapp_ativo: boolean;
+  lembrete_antes_dias: number;
+  lembrete_no_vencimento: boolean;
+  lembrete_atraso_dias: number;
+  whatsapp_limite_diario: number;
+  whatsapp_mensagem_antes: string;
+  whatsapp_mensagem_vencimento: string;
+  whatsapp_mensagem_atraso: string;
+};
+
+type BillingMessage = {
+  id: string;
+  tipo: string;
+  status: string;
+  telefone: string | null;
+  erro: string | null;
+  enviada_em: string | null;
+  criado_em: string;
+  clientes: { nome: string } | { nome: string }[] | null;
+};
+
 type WhatsAppStatus = {
   ok: boolean;
   configured: boolean;
@@ -49,7 +71,21 @@ type WhatsAppStatus = {
   connection: { instance: string; state: string } | null;
   connectionError: string | null;
   phoneCoverage: { total: number; withPhone: number; withoutPhone: number };
+  mercadoPagoEnvironment: "test" | "production";
+  automation: WhatsAppAutomation;
+  recentMessages: BillingMessage[];
   error?: string;
+};
+
+const DEFAULT_AUTOMATION: WhatsAppAutomation = {
+  whatsapp_ativo: false,
+  lembrete_antes_dias: 3,
+  lembrete_no_vencimento: true,
+  lembrete_atraso_dias: 2,
+  whatsapp_limite_diario: 30,
+  whatsapp_mensagem_antes: "Olá, {nome}. Passando para lembrar que sua mensalidade vence em {vencimento}.{pagamento}",
+  whatsapp_mensagem_vencimento: "Olá, {nome}. Sua mensalidade vence hoje ({vencimento}).{pagamento}",
+  whatsapp_mensagem_atraso: "Olá, {nome}. Identificamos que sua mensalidade com vencimento em {vencimento} ainda está pendente.{pagamento} Se você já realizou o pagamento, desconsidere esta mensagem.",
 };
 
 function eventStatus(status: string) {
@@ -59,16 +95,41 @@ function eventStatus(status: string) {
   return "A vencer";
 }
 
+function messageStatus(status: string) {
+  if (status === "enviada") return "Pago";
+  if (status === "erro") return "Atrasado";
+  if (status === "ignorada") return "Pendente";
+  return "A vencer";
+}
+
+function first<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function previewTemplate(template: string) {
+  return template
+    .replaceAll("{nome}", "Paula")
+    .replaceAll("{cliente}", "Paula Andressa Pamela")
+    .replaceAll("{vencimento}", "15/08/2026")
+    .replaceAll("{valor}", "R$ 30,00")
+    .replaceAll("{link_pagamento}", "https://pagamento.exemplo")
+    .replaceAll("{pagamento}", "\n\nPagamento: https://pagamento.exemplo");
+}
+
 export default function IntegrationsPage() {
   const [tab, setTab] = useState<Tab>("Mercado Pago");
   const [mp, setMp] = useState<MercadoPagoStatus | null>(null);
   const [wa, setWa] = useState<WhatsAppStatus | null>(null);
+  const [automation, setAutomation] = useState<WhatsAppAutomation>(DEFAULT_AUTOMATION);
   const [loading, setLoading] = useState(true);
   const [waLoading, setWaLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [waAction, setWaAction] = useState(false);
+  const [automationSaving, setAutomationSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [waMessage, setWaMessage] = useState<string | null>(null);
+  const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [testNumber, setTestNumber] = useState("");
   const [testMessage, setTestMessage] = useState("Teste de conexão do thegestor. Se você recebeu esta mensagem, a integração está funcionando.");
@@ -92,6 +153,7 @@ export default function IntegrationsPage() {
       const response = await fetch("/api/integracoes/whatsapp", { cache: "no-store" });
       const payload = await response.json() as WhatsAppStatus;
       setWa(payload);
+      if (payload.automation) setAutomation(payload.automation);
     } catch {
       setWa(null);
     } finally {
@@ -158,6 +220,36 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function saveAutomation() {
+    setAutomationSaving(true);
+    setAutomationMessage(null);
+    try {
+      const response = await fetch("/api/integracoes/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "saveAutomation",
+          enabled: automation.whatsapp_ativo,
+          beforeDays: automation.lembrete_antes_dias,
+          dueDay: automation.lembrete_no_vencimento,
+          overdueDays: automation.lembrete_atraso_dias,
+          dailyLimit: automation.whatsapp_limite_diario,
+          beforeTemplate: automation.whatsapp_mensagem_antes,
+          dueTemplate: automation.whatsapp_mensagem_vencimento,
+          overdueTemplate: automation.whatsapp_mensagem_atraso,
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; enabled?: boolean };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível salvar a automação.");
+      setAutomationMessage(payload.enabled ? "Automação salva e ativada." : "Regras salvas. Automação permanece desligada.");
+      await loadWhatsApp();
+    } catch (cause) {
+      setAutomationMessage(cause instanceof Error ? cause.message : "Falha ao salvar automação.");
+    } finally {
+      setAutomationSaving(false);
+    }
+  }
+
   async function copyWebhook() {
     if (!mp?.webhookUrl) return;
     await navigator.clipboard.writeText(mp.webhookUrl);
@@ -168,6 +260,8 @@ export default function IntegrationsPage() {
   const ready = Boolean(mp?.tokenConfigured && mp?.webhookSecretConfigured && mp?.adminKeyConfigured);
   const events = mp?.events ?? [];
   const waConnected = wa?.connection?.state === "open";
+  const automationReady = Boolean(waConnected && wa?.mercadoPagoEnvironment === "production" && (wa?.phoneCoverage.withPhone ?? 0) > 0);
+  const recentMessages = wa?.recentMessages ?? [];
 
   return (
     <AppShell>
@@ -265,6 +359,67 @@ export default function IntegrationsPage() {
                 </div>
                 <button className="button primary" style={{ marginTop: 12 }} disabled={!waConnected || waAction || !testNumber.trim() || !testMessage.trim()} onClick={() => void sendWhatsAppTest()}>{waAction ? "Enviando..." : "Enviar teste"}</button>
               </div>
+            </div>
+
+            <div className="integration-card" style={{ gridColumn: "1 / -1" }}>
+              <div className="integration-head">
+                <div>
+                  <h3>Automação de cobranças</h3>
+                  <p style={{ margin: 0 }}>Executa diariamente às 10:10 (Brasília), sem duplicar mensagens da mesma cobrança.</p>
+                </div>
+                <StatusBadge status={automation.whatsapp_ativo ? "Conectado" : "Pendente"} />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginTop: 16 }}>
+                <div className="integration-field"><label>Evolution</label><code>{waConnected ? "open ✓" : "não conectada"}</code></div>
+                <div className="integration-field"><label>Mercado Pago</label><code>{wa?.mercadoPagoEnvironment === "production" ? "Produção ✓" : "Teste — bloqueado"}</code></div>
+                <div className="integration-field"><label>Telefones disponíveis</label><code>{wa?.phoneCoverage.withPhone ?? 0} de {wa?.phoneCoverage.total ?? 0}</code></div>
+              </div>
+
+              {!automationReady ? (
+                <div className="empty-note" style={{ marginTop: 14, textAlign: "left" }}>
+                  A ativação está protegida. Falta: {!waConnected ? "WhatsApp conectado; " : ""}{wa?.mercadoPagoEnvironment !== "production" ? "Mercado Pago em Produção; " : ""}{(wa?.phoneCoverage.withPhone ?? 0) <= 0 ? "telefones nos clientes." : ""}
+                </div>
+              ) : null}
+
+              <div className="form-grid" style={{ marginTop: 18 }}>
+                <label><span>Dias antes do vencimento</span><input type="number" min={0} max={30} value={automation.lembrete_antes_dias} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_antes_dias: Number(event.target.value) }))} /></label>
+                <label><span>Dias após o vencimento</span><input type="number" min={0} max={30} value={automation.lembrete_atraso_dias} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_atraso_dias: Number(event.target.value) }))} /></label>
+                <label><span>Limite máximo por dia</span><input type="number" min={1} max={100} value={automation.whatsapp_limite_diario} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_limite_diario: Number(event.target.value) }))} /></label>
+                <label style={{ alignSelf: "end", paddingBottom: 12 }}><span><input type="checkbox" checked={automation.lembrete_no_vencimento} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_no_vencimento: event.target.checked }))} style={{ width: "auto", marginRight: 8 }} />Enviar também no dia do vencimento</span></label>
+
+                <label className="full"><span>Mensagem antes do vencimento</span><textarea rows={3} value={automation.whatsapp_mensagem_antes} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_antes: event.target.value }))} /></label>
+                <div className="full" style={{ padding: "10px 12px", borderRadius: 10, background: "#f7f9fc", whiteSpace: "pre-wrap", fontSize: 13 }}><b>Prévia:</b><br />{previewTemplate(automation.whatsapp_mensagem_antes)}</div>
+
+                <label className="full"><span>Mensagem no vencimento</span><textarea rows={3} value={automation.whatsapp_mensagem_vencimento} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_vencimento: event.target.value }))} /></label>
+                <label className="full"><span>Mensagem em atraso</span><textarea rows={3} value={automation.whatsapp_mensagem_atraso} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_atraso: event.target.value }))} /></label>
+              </div>
+
+              <p style={{ marginTop: 10, color: "#6b7a91", fontSize: 13 }}>Variáveis disponíveis: <code>{"{nome}"}</code>, <code>{"{cliente}"}</code>, <code>{"{vencimento}"}</code>, <code>{"{valor}"}</code>, <code>{"{link_pagamento}"}</code> e <code>{"{pagamento}"}</code>. O último inclui automaticamente uma linha com o link quando houver Pix.</p>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                  <input
+                    type="checkbox"
+                    style={{ width: "auto" }}
+                    checked={automation.whatsapp_ativo}
+                    disabled={!automationReady && !automation.whatsapp_ativo}
+                    onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_ativo: event.target.checked }))}
+                  />
+                  Ativar mensagens automáticas
+                </label>
+                <button className="button primary" disabled={automationSaving} onClick={() => void saveAutomation()}>{automationSaving ? "Salvando..." : "Salvar regras"}</button>
+              </div>
+              {automationMessage ? <div className={automationMessage.toLowerCase().includes("não") || automationMessage.toLowerCase().includes("falta") || automationMessage.toLowerCase().includes("primeiro") ? "form-error" : "form-success"} style={{ marginTop: 12 }}>{automationMessage}</div> : null}
+            </div>
+
+            <div className="integration-card" style={{ gridColumn: "1 / -1" }}>
+              <h3>Últimas mensagens de cobrança</h3>
+              {recentMessages.length ? (
+                <div className="table-wrap" style={{ marginTop: 12 }}>
+                  <table className="admin-table"><thead><tr><th>Cliente</th><th>Tipo</th><th>Status</th><th>Data</th><th>Erro</th></tr></thead><tbody>{recentMessages.map((item) => <tr key={item.id}><td>{first(item.clientes)?.nome ?? "Cliente"}</td><td>{item.tipo.replaceAll("_", " ")}</td><td><StatusBadge status={messageStatus(item.status)} /></td><td>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.enviada_em ?? item.criado_em))}</td><td>{item.erro ?? "—"}</td></tr>)}</tbody></table>
+                </div>
+              ) : <div className="empty-note">Nenhuma mensagem automática enviada ainda.</div>}
             </div>
           </div>
         ) : null}
