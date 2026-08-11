@@ -1,0 +1,324 @@
+import { randomUUID } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendEvolutionText } from "@/lib/evolution";
+import { createPixOrder, extractPix, mercadoPagoEnvironment, safeMercadoPagoOrderSummary } from "@/lib/mercado-pago";
+
+export type BillingAutomationConfig = {
+  empresa_id: string;
+  whatsapp_ativo: boolean;
+  lembrete_antes_dias: number;
+  lembrete_no_vencimento: boolean;
+  lembrete_atraso_dias: number;
+  whatsapp_limite_diario: number;
+  whatsapp_mensagem_antes: string;
+  whatsapp_mensagem_vencimento: string;
+  whatsapp_mensagem_atraso: string;
+};
+
+type ClientJoin = {
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  status: string;
+};
+
+type FinancialJoin = {
+  valor_original: number;
+  desconto: number;
+  acrescimo: number;
+  valor_pago: number | null;
+};
+
+type ChargeRow = {
+  id: string;
+  empresa_id: string;
+  cliente_id: string;
+  competencia: string;
+  vencimento: string;
+  status_pagamento: string;
+  clientes: ClientJoin | ClientJoin[] | null;
+  cobrancas_financeiras: FinancialJoin | FinancialJoin[] | null;
+};
+
+type MessageType = "antes_vencimento" | "vencimento" | "atraso";
+
+function first<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
+}
+
+function dateOnly(value: string) {
+  return new Date(`${value.slice(0, 10)}T12:00:00Z`);
+}
+
+function addDays(value: string, days: number) {
+  const date = dateOnly(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateBR(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+}
+
+function financialBalance(financial: FinancialJoin | null) {
+  if (!financial) return 0;
+  return Math.max(
+    Number(financial.valor_original ?? 0)
+      + Number(financial.acrescimo ?? 0)
+      - Number(financial.desconto ?? 0)
+      - Number(financial.valor_pago ?? 0),
+    0,
+  );
+}
+
+export function renderBillingMessage(input: {
+  template: string;
+  name: string;
+  dueDate: string;
+  amount: number;
+  paymentLink?: string | null;
+}) {
+  const firstName = input.name.trim().split(/\s+/)[0] || input.name.trim();
+  const payment = input.paymentLink ? `\n\nPagamento: ${input.paymentLink}` : "";
+  return input.template
+    .replaceAll("{nome}", firstName)
+    .replaceAll("{cliente}", input.name.trim())
+    .replaceAll("{vencimento}", formatDateBR(input.dueDate))
+    .replaceAll("{valor}", formatMoney(input.amount))
+    .replaceAll("{link_pagamento}", input.paymentLink ?? "")
+    .replaceAll("{pagamento}", payment)
+    .trim();
+}
+
+function classifyMessage(today: string, dueDate: string, config: BillingAutomationConfig): MessageType | null {
+  if (config.lembrete_antes_dias >= 0 && today === addDays(dueDate, -config.lembrete_antes_dias)) return "antes_vencimento";
+  if (config.lembrete_no_vencimento && today === dueDate) return "vencimento";
+  if (config.lembrete_atraso_dias >= 0 && today === addDays(dueDate, config.lembrete_atraso_dias)) return "atraso";
+  return null;
+}
+
+function templateFor(type: MessageType, config: BillingAutomationConfig) {
+  if (type === "antes_vencimento") return config.whatsapp_mensagem_antes;
+  if (type === "vencimento") return config.whatsapp_mensagem_vencimento;
+  return config.whatsapp_mensagem_atraso;
+}
+
+async function existingPaymentLink(admin: SupabaseClient, chargeId: string) {
+  const { data, error } = await admin
+    .from("pagamentos")
+    .select("pix_ticket_url,expira_em,status,criado_em")
+    .eq("cobranca_id", chargeId)
+    .eq("provedor", "mercado_pago")
+    .not("pix_ticket_url", "is", null)
+    .order("criado_em", { ascending: false })
+    .limit(5);
+  if (error) throw error;
+  const now = Date.now();
+  const valid = (data ?? []).find((item) => !item.expira_em || Date.parse(item.expira_em) > now);
+  return valid?.pix_ticket_url ?? null;
+}
+
+async function ensureProductionPix(admin: SupabaseClient, charge: ChargeRow, amount: number) {
+  const reusable = await existingPaymentLink(admin, charge.id);
+  if (reusable) return reusable;
+  if (mercadoPagoEnvironment() !== "production" || amount <= 0) return null;
+
+  const client = first(charge.clientes);
+  const payerEmail = client?.email?.trim();
+  if (!payerEmail) return null;
+
+  const externalReference = `thegestor:${charge.id}`;
+  const idempotencyKey = randomUUID();
+  const order = await createPixOrder({
+    amount,
+    externalReference,
+    payerEmail,
+    idempotencyKey,
+    expiration: "P1D",
+    processingMode: "automatic",
+  });
+  const pix = extractPix(order);
+  if (!pix.orderId || !pix.qrCode) throw new Error("Mercado Pago não retornou dados válidos do Pix automático.");
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const { error: paymentError } = await admin.from("pagamentos").insert({
+    empresa_id: charge.empresa_id,
+    cobranca_id: charge.id,
+    provedor: "mercado_pago",
+    provider_payment_id: pix.paymentId || null,
+    provider_order_id: pix.orderId,
+    status: pix.orderStatus,
+    metodo: "pix",
+    pix_ticket_url: pix.ticketUrl,
+    pix_qr_code: pix.qrCode,
+    pix_qr_code_base64: pix.qrCodeBase64,
+    expira_em: expiresAt,
+    idempotency_key: idempotencyKey,
+    payload_resumo: {
+      ...safeMercadoPagoOrderSummary(order),
+      source: "whatsapp_automation",
+      thegestor_balance: amount,
+      thegestor_external_reference: externalReference,
+    },
+  });
+  if (paymentError) {
+    if (paymentError.code !== "23505") throw paymentError;
+    return existingPaymentLink(admin, charge.id);
+  }
+
+  await admin
+    .from("cobrancas")
+    .update({ external_reference: externalReference })
+    .eq("id", charge.id)
+    .eq("empresa_id", charge.empresa_id);
+
+  return pix.ticketUrl ?? null;
+}
+
+function saoPauloToday(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+async function sentToday(admin: SupabaseClient, empresaId: string, today: string) {
+  const start = `${today}T00:00:00-03:00`;
+  const end = `${today}T23:59:59.999-03:00`;
+  const { count, error } = await admin
+    .from("mensagens_cobranca")
+    .select("id", { count: "exact", head: true })
+    .eq("empresa_id", empresaId)
+    .eq("status", "enviada")
+    .gte("enviada_em", start)
+    .lte("enviada_em", end);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function loadCharges(admin: SupabaseClient, config: BillingAutomationConfig, today: string) {
+  const minDate = addDays(today, -Math.max(config.lembrete_atraso_dias, 0));
+  const maxDate = addDays(today, Math.max(config.lembrete_antes_dias, 0));
+  const { data, error } = await admin
+    .from("cobrancas")
+    .select("id,empresa_id,cliente_id,competencia,vencimento,status_pagamento,clientes(nome,telefone,email,status),cobrancas_financeiras(valor_original,desconto,acrescimo,valor_pago)")
+    .eq("empresa_id", config.empresa_id)
+    .neq("status_pagamento", "pago")
+    .gte("vencimento", minDate)
+    .lte("vencimento", maxDate)
+    .order("vencimento", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as unknown as ChargeRow[];
+}
+
+export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = new Date()) {
+  const today = saoPauloToday(now);
+  const { data: configs, error: configError } = await admin
+    .from("configuracoes_empresa")
+    .select("empresa_id,whatsapp_ativo,lembrete_antes_dias,lembrete_no_vencimento,lembrete_atraso_dias,whatsapp_limite_diario,whatsapp_mensagem_antes,whatsapp_mensagem_vencimento,whatsapp_mensagem_atraso")
+    .eq("whatsapp_ativo", true);
+  if (configError) throw configError;
+
+  const summary = { date: today, companies: 0, candidates: 0, sent: 0, ignored: 0, errors: 0, limitReached: 0 };
+
+  for (const rawConfig of configs ?? []) {
+    const config = rawConfig as BillingAutomationConfig;
+    summary.companies += 1;
+    const alreadySent = await sentToday(admin, config.empresa_id, today);
+    let remaining = Math.max(Number(config.whatsapp_limite_diario ?? 30) - alreadySent, 0);
+    if (remaining <= 0) {
+      summary.limitReached += 1;
+      continue;
+    }
+
+    const charges = await loadCharges(admin, config, today);
+    for (const charge of charges) {
+      if (remaining <= 0) {
+        summary.limitReached += 1;
+        break;
+      }
+
+      const type = classifyMessage(today, charge.vencimento, config);
+      if (!type) continue;
+      summary.candidates += 1;
+
+      const client = first(charge.clientes);
+      const financial = first(charge.cobrancas_financeiras);
+      const phone = client?.telefone?.trim() ?? "";
+      const amount = financialBalance(financial);
+      if (!client || client.status !== "ativo" || !phone || amount <= 0) {
+        summary.ignored += 1;
+        continue;
+      }
+
+      const { data: reserved, error: reserveError } = await admin
+        .from("mensagens_cobranca")
+        .insert({
+          empresa_id: charge.empresa_id,
+          cobranca_id: charge.id,
+          cliente_id: charge.cliente_id,
+          tipo: type,
+          provedor: "evolution",
+          status: "pendente",
+          telefone: phone,
+        })
+        .select("id")
+        .single();
+
+      if (reserveError) {
+        if (reserveError.code === "23505") {
+          summary.ignored += 1;
+          continue;
+        }
+        summary.errors += 1;
+        continue;
+      }
+
+      try {
+        const paymentLink = await ensureProductionPix(admin, charge, amount);
+        const message = renderBillingMessage({
+          template: templateFor(type, config),
+          name: client.nome,
+          dueDate: charge.vencimento,
+          amount,
+          paymentLink,
+        });
+        const result = await sendEvolutionText(phone, message);
+        await admin
+          .from("mensagens_cobranca")
+          .update({
+            status: "enviada",
+            mensagem: message,
+            provider_message_id: result.key?.id ?? null,
+            enviada_em: new Date().toISOString(),
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", reserved.id);
+        summary.sent += 1;
+        remaining -= 1;
+      } catch (cause) {
+        await admin
+          .from("mensagens_cobranca")
+          .update({
+            status: "erro",
+            erro: cause instanceof Error ? cause.message.slice(0, 800) : "Falha no envio automático.",
+            atualizado_em: new Date().toISOString(),
+          })
+          .eq("id", reserved.id);
+        summary.errors += 1;
+      }
+    }
+  }
+
+  return summary;
+}
