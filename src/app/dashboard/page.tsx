@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, UserRoundCheck, UserRoundX, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, CircleDollarSign } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
@@ -16,12 +16,6 @@ type ChargeRow = {
   pago_em: string | null;
   clientes: { nome: string } | { nome: string }[] | null;
   cobrancas_financeiras: { valor_original: number; valor_pago: number | null } | { valor_original: number; valor_pago: number | null }[] | null;
-};
-type QueueRow = {
-  id: string;
-  tipo: string;
-  prioridade: string;
-  clientes: { nome: string } | { nome: string }[] | null;
 };
 type CreditRow = { creditos_utilizados: number | null; creditos_previstos: number | null };
 
@@ -54,37 +48,32 @@ export default async function DashboardPage() {
   const today = todayInSaoPaulo();
   const { firstDay, nextMonth } = monthBounds(today);
 
-  let activeClients = 0;
-  let cancelledClients = 0;
   let openCharges: ChargeRow[] = [];
   let paidThisMonth: ChargeRow[] = [];
-  let queue: QueueRow[] = [];
   let creditRows: CreditRow[] = [];
+  let pendingRenewals = 0;
   let creditCost = 8;
 
   if (empresaId) {
-    const [activeResult, cancelledResult, openResult, paidResult, queueResult, creditsResult, configResult] = await Promise.all([
-      supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "ativo"),
-      supabase.from("clientes").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "cancelado"),
+    const [openResult, paidResult, renewalsResult, creditsResult, configResult] = await Promise.all([
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,clientes(nome),cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).in("status_pagamento", ["pendente", "atrasado"]).order("vencimento", { ascending: true }),
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).eq("status_pagamento", "pago").gte("pago_em", `${firstDay}T00:00:00`).lt("pago_em", `${nextMonth}T00:00:00`),
-      supabase.from("tarefas_operacionais").select("id,tipo,prioridade,clientes(nome)").eq("empresa_id", empresaId).eq("status", "pendente").order("criado_em", { ascending: true }).limit(5),
+      supabase.from("tarefas_operacionais").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "pendente").in("tipo", ["renovar", "novo_cliente"]),
       supabase.from("cobrancas").select("creditos_utilizados,creditos_previstos").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth).neq("status_pagamento", "cancelado"),
       supabase.from("configuracoes_empresa").select("custo_medio_credito").eq("empresa_id", empresaId).maybeSingle(),
     ]);
 
-    activeClients = activeResult.count ?? 0;
-    cancelledClients = cancelledResult.count ?? 0;
     openCharges = (openResult.data ?? []) as ChargeRow[];
     paidThisMonth = ((paidResult.data ?? []) as ChargeRow[]).filter((charge) => chargeValue(charge) > 0 && chargePaid(charge) > 0);
-    queue = (queueResult.data ?? []) as QueueRow[];
+    pendingRenewals = renewalsResult.count ?? 0;
     creditRows = (creditsResult.data ?? []) as CreditRow[];
     creditCost = Number(configResult.data?.custo_medio_credito ?? 8);
   }
 
   const overdue = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado" && chargeBalance(charge) > 0);
-  const upcoming = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "A vencer" && chargeBalance(charge) > 0).slice(0, 5);
-  const late = overdue.slice(0, 5);
+  const dueToday = openCharges.filter((charge) => charge.vencimento === today && chargeBalance(charge) > 0);
+  const upcoming = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "A vencer" && chargeBalance(charge) > 0).slice(0, 6);
+  const late = overdue.slice(0, 6);
   const partialReceivedThisMonth = openCharges
     .filter((charge) => charge.competencia >= firstDay && charge.competencia < nextMonth && chargePaid(charge) > 0)
     .reduce((sum, charge) => sum + chargePaid(charge), 0);
@@ -98,23 +87,23 @@ export default async function DashboardPage() {
 
   return (
     <AppShell>
-      <PageHeader title="Visão Geral" subtitle="Resumo do negócio e prioridades do dia" />
+      <PageHeader title="Início" subtitle="O que precisa da sua atenção agora" />
 
       <section className="stats-grid">
-        <StatCard title="Clientes ativos" value={String(activeClients)} helper="Base atual" icon={Users} />
-        <StatCard title="Clientes cancelados" value={String(cancelledClients)} helper="Base atual" icon={UserRoundX} tone="slate" />
-        <StatCard title="Cobranças quitadas" value={String(paidThisMonth.length)} helper="Com valor recebido no mês" icon={UserRoundCheck} tone="green" />
-        <StatCard title="Pagamentos em atraso" value={String(overdue.length)} helper="Exigem acompanhamento" icon={AlertTriangle} tone="orange" />
+        <StatCard title="Vencem hoje" value={String(dueToday.length)} helper="Cobranças para conferir" icon={Clock3} />
+        <StatCard title="Em atraso" value={String(overdue.length)} helper="Precisam de cobrança" icon={AlertTriangle} tone="orange" />
+        <StatCard title="Para renovar" value={String(pendingRenewals)} helper="Pagamento já confirmado" icon={CheckCircle2} tone="green" />
+        <StatCard title="Recebido no mês" value={currency.format(receivedThisMonth)} helper={`${paidThisMonth.length} cobrança(s) quitada(s)`} icon={CircleDollarSign} tone="green" />
       </section>
 
       <section className={styles.summaryGrid}>
         <article className={styles.panel}>
-          <div className={styles.panelHead}><h2>Resumo financeiro</h2><Link href="/cobrancas">Ver cobranças</Link></div>
+          <div className={styles.panelHead}><h2>Resumo das cobranças</h2><Link href="/cobrancas">Resolver pendências</Link></div>
           <div className={styles.metricGrid}>
-            <div className={`${styles.metric} ${styles.metricAccent}`}><span>Recebido no mês</span><strong>{currency.format(receivedThisMonth)}</strong><small>inclui pagamentos parciais</small></div>
-            <div className={`${styles.metric} ${styles.metricWarn}`}><span>A receber</span><strong>{currency.format(pendingAmount)}</strong><small>saldo real das cobranças abertas</small></div>
+            <div className={`${styles.metric} ${styles.metricWarn}`}><span>A receber</span><strong>{currency.format(pendingAmount)}</strong><small>saldo das cobranças abertas</small></div>
             <div className={`${styles.metric} ${styles.metricWarn}`}><span>Em atraso</span><strong>{currency.format(overdueAmount)}</strong><small>{overdue.length} cobrança(s)</small></div>
-            <div className={styles.metric}><span>Próximas cobranças</span><strong>{upcoming.length}</strong><small>exibidas abaixo</small></div>
+            <div className={`${styles.metric} ${styles.metricAccent}`}><span>Recebido</span><strong>{currency.format(receivedThisMonth)}</strong><small>neste mês</small></div>
+            <div className={styles.metric}><span>Para renovar</span><strong>{pendingRenewals}</strong><small>ações pendentes</small></div>
           </div>
         </article>
 
@@ -123,28 +112,22 @@ export default async function DashboardPage() {
           <div className={styles.metricGrid}>
             <div className={`${styles.metric} ${styles.metricAccent}`}><span>Utilizados</span><strong>{creditsUsed}</strong><small>{currency.format(creditsUsed * creditCost)}</small></div>
             <div className={`${styles.metric} ${styles.metricWarn}`}><span>Previstos</span><strong>{creditsExpected}</strong><small>{currency.format(creditsExpected * creditCost)}</small></div>
-            <div className={styles.metric}><span>Projeção total</span><strong>{projectedCredits}</strong><small>{currency.format(projectedCredits * creditCost)}</small></div>
+            <div className={styles.metric}><span>Projeção</span><strong>{projectedCredits}</strong><small>{currency.format(projectedCredits * creditCost)}</small></div>
             <div className={styles.metric}><span>Custo médio</span><strong>{currency.format(creditCost)}</strong><small>por crédito</small></div>
           </div>
-          <div className={styles.creditNote}>Ao concluir uma renovação, os créditos previstos passam automaticamente para utilizados.</div>
         </article>
       </section>
 
       <section className={styles.billingGrid}>
         <article className={styles.panel}>
-          <div className={styles.panelHead}><h2>Cobranças próximas</h2><Link href="/cobrancas">Ver todas</Link></div>
-          {upcoming.length ? <div className={styles.chargeList}>{upcoming.map((charge) => <div className={styles.chargeRow} key={charge.id}><div className={styles.chargeMain}><b>{first(charge.clientes)?.nome ?? "Cliente"}</b><small>A vencer</small></div><span className={styles.chargeDate}>{formatDateBR(charge.vencimento)}</span><span className={styles.chargeValue}>{currency.format(chargeBalance(charge))}</span></div>)}</div> : <div className={styles.empty}>Nenhuma cobrança próxima.</div>}
+          <div className={styles.panelHead}><h2>Próximos vencimentos</h2><Link href="/cobrancas">Ver cobranças</Link></div>
+          {upcoming.length ? <div className={styles.chargeList}>{upcoming.map((charge) => <Link href="/cobrancas" className={styles.chargeRow} key={charge.id}><div className={styles.chargeMain}><b>{first(charge.clientes)?.nome ?? "Cliente"}</b><small>{charge.vencimento === today ? "Vence hoje" : "A vencer"}</small></div><span className={styles.chargeDate}>{formatDateBR(charge.vencimento)}</span><span className={styles.chargeValue}>{currency.format(chargeBalance(charge))}</span></Link>)}</div> : <div className={styles.empty}>Nenhuma cobrança próxima.</div>}
         </article>
 
         <article className={styles.panel}>
-          <div className={styles.panelHead}><h2>Cobranças em atraso</h2><Link href="/cobrancas">Ver todas</Link></div>
-          {late.length ? <div className={styles.chargeList}>{late.map((charge) => <div className={styles.chargeRow} key={charge.id}><div className={styles.chargeMain}><b>{first(charge.clientes)?.nome ?? "Cliente"}</b><small>Em atraso</small></div><span className={styles.chargeDate}>{formatDateBR(charge.vencimento)}</span><span className={styles.chargeValue}>{currency.format(chargeBalance(charge))}</span></div>)}</div> : <div className={styles.empty}>Nenhuma cobrança em atraso.</div>}
+          <div className={styles.panelHead}><h2>Em atraso</h2><Link href="/cobrancas">Cobrar agora</Link></div>
+          {late.length ? <div className={styles.chargeList}>{late.map((charge) => <Link href="/cobrancas" className={styles.chargeRow} key={charge.id}><div className={styles.chargeMain}><b>{first(charge.clientes)?.nome ?? "Cliente"}</b><small>Em atraso</small></div><span className={styles.chargeDate}>{formatDateBR(charge.vencimento)}</span><span className={styles.chargeValue}>{currency.format(chargeBalance(charge))}</span></Link>)}</div> : <div className={styles.empty}>Nenhuma cobrança em atraso.</div>}
         </article>
-      </section>
-
-      <section className={`${styles.panel} ${styles.queuePanel}`}>
-        <div className={styles.panelHead}><h2>Fila operacional</h2><Link href="/operador">Abrir painel</Link></div>
-        {queue.length ? <div className="queue">{queue.map((item, index) => <div className="queue-item" key={item.id}><div className={`queue-dot ${item.prioridade === "alta" ? "danger" : item.tipo === "novo_cliente" ? "warning" : "info"}`}>{index + 1}</div><div className="queue-copy"><b>{item.tipo === "novo_cliente" ? "Ativar novo cliente" : item.tipo === "renovar" ? "Renovar cliente" : "Acompanhar cliente"}</b><small>{first(item.clientes)?.nome ?? "Cliente"}</small></div><Link className="button ghost small" href="/operador">Abrir</Link></div>)}</div> : <div className={styles.empty}>Nenhuma tarefa operacional pendente.</div>}
       </section>
     </AppShell>
   );
