@@ -85,6 +85,7 @@ export default function ChargesPage() {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [selectedChargeId, setSelectedChargeId] = useState<string | null>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [quickPayingId, setQuickPayingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -152,6 +153,32 @@ export default function ChargesPage() {
   }, []);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  async function quickPay(charge: UiCharge) {
+    if (quickPayingId || charge.balance <= 0) return;
+    setQuickPayingId(charge.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/cobrancas/quick-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chargeId: charge.id }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; renewed?: boolean; nextDue?: string; warning?: string | null };
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível marcar como pago.");
+
+      const nextDueText = payload.nextDue ? formatDateBR(payload.nextDue) : "o próximo mês";
+      setNotice(payload.renewed
+        ? `${charge.client}: pago e renovado. Próximo vencimento previsto em ${nextDueText}.`
+        : `${charge.client}: pagamento registrado. ${payload.warning ?? "Confira a renovação."}`);
+      await loadData();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível marcar como pago.");
+    } finally {
+      setQuickPayingId(null);
+    }
+  }
 
   async function completeTask(charge: UiCharge) {
     if (!charge.taskId || savingTaskId) return;
@@ -227,8 +254,9 @@ export default function ChargesPage() {
                     <div className={`${styles.financeItem} ${styles.financeBalance}`}><span>Saldo</span><strong>{currency.format(charge.balance)}</strong></div>
                   </div>
                   <div className={styles.actionCell}>
-                    {charge.taskId ? <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>{savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}</button> : null}
-                    <button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>{charge.taskId ? "Ver" : "Detalhes"}</button>
+                    {charge.balance > 0 ? <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>{quickPayingId === charge.id ? "Salvando..." : charge.status === "Parcial" ? "Quitar" : "Pago"}</button> : null}
+                    {charge.balance === 0 && charge.taskId ? <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>{savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}</button> : null}
+                    <button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>{charge.balance > 0 || charge.taskId ? "Ver" : "Detalhes"}</button>
                   </div>
                 </div>
               ))}
