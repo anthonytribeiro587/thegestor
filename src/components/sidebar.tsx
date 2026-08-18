@@ -6,11 +6,10 @@ import { BarChart3, CircleDollarSign, CreditCard, Link2, LogOut, Settings, Shiel
 import { logoutAction } from "@/app/auth/actions";
 
 const adminItems = [
-  { href: "/dashboard", label: "Visão Geral", icon: BarChart3 },
+  { href: "/dashboard", label: "Início", icon: BarChart3 },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/cobrancas", label: "Cobranças", icon: CircleDollarSign },
   { href: "/integracoes", label: "Integrações", icon: Link2 },
-  { href: "/usuarios", label: "Usuários", icon: ShieldCheck },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
@@ -35,7 +34,7 @@ export function Sidebar({ role = "Administrador" }: { role?: "Administrador" | "
         })}
       </nav>
       <div className="sidebar-footer">
-        <div className="role-pill"><ShieldCheck size={17} /><span>{role === "Operador" ? "Permissão operador" : "Modo administrador"}</span></div>
+        <div className="role-pill"><ShieldCheck size={17} /><span>{role === "Operador" ? "Permissão operador" : "Administrador"}</span></div>
         <form action={logoutAction}>
           <button className="sidebar-logout" type="submit"><LogOut size={18} /><span>Sair</span></button>
         </form>
