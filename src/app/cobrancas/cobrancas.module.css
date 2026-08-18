@@ -3,8 +3,7 @@
   gap: 16px;
 }
 
-.chargePanel,
-.queuePanel {
+.chargePanel {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -45,7 +44,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(360px, 100%);
+  width: min(330px, 100%);
   min-height: 38px;
   padding: 0 11px;
   border: 1px solid var(--line);
@@ -66,12 +65,13 @@
   gap: 7px;
   margin-left: auto;
   overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .chargeHeader,
 .chargeRow {
   display: grid;
-  grid-template-columns: minmax(220px, 1.45fr) 105px 145px minmax(290px, 1.15fr) 82px;
+  grid-template-columns: minmax(190px, 1.35fr) 100px 175px minmax(250px, 1.05fr) minmax(150px, auto);
   gap: 14px;
   align-items: center;
 }
@@ -85,7 +85,7 @@
 }
 
 .chargeRow {
-  min-height: 66px;
+  min-height: 70px;
   padding: 10px 15px;
   border-bottom: 1px solid #edf1f6;
   font-size: 11px;
@@ -122,11 +122,12 @@
   color: var(--muted);
   font-size: 9px;
   margin-top: 4px;
+  line-height: 1.35;
 }
 
 .financeCell {
   display: grid;
-  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  grid-template-columns: repeat(3, minmax(68px, 1fr));
   gap: 8px;
 }
 
@@ -162,6 +163,9 @@
 .actionCell {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .empty {
@@ -171,81 +175,15 @@
   font-size: 12px;
 }
 
-.queueGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px;
-}
-
-.queueCard {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 13px;
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.queueTop {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-}
-
-.queueNumber {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-size: 10px;
-  font-weight: 800;
-  flex: 0 0 auto;
-}
-
-.queueCopy {
-  min-width: 0;
-}
-
-.queueCopy b,
-.queueCopy small {
-  display: block;
-}
-
-.queueCopy b {
-  font-size: 10px;
-}
-
-.queueCopy small {
-  color: var(--muted);
-  font-size: 9px;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queueAction {
-  display: flex;
-  justify-content: flex-end;
-}
-
 @media (max-width: 1180px) {
-  .queueGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .chargeHeader,
   .chargeRow {
-    grid-template-columns: minmax(190px, 1.3fr) 95px 125px minmax(245px, 1fr) 74px;
+    grid-template-columns: minmax(170px, 1.2fr) 92px 150px minmax(220px, 1fr) 145px;
     gap: 10px;
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 920px) {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -264,8 +202,8 @@
   }
 
   .chargeRow {
-    grid-template-columns: 1fr auto;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 14px;
     padding: 14px;
   }
 
@@ -282,15 +220,35 @@
   .actionCell {
     grid-column: 2;
     grid-row: 1 / span 3;
-    align-self: center;
-  }
-
-  .queueGrid {
-    grid-template-columns: 1fr;
+    align-self: start;
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
-@media (max-width: 520px) {
+@media (max-width: 560px) {
+  .chargeRow {
+    grid-template-columns: 1fr;
+  }
+
+  .chargeRow > :nth-child(2),
+  .chargeRow > :nth-child(3),
+  .actionCell {
+    grid-column: 1;
+  }
+
+  .actionCell {
+    grid-row: auto;
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .financeCell {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
   .financeCell {
     grid-template-columns: 1fr;
   }
