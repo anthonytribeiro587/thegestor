@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-function addOneMonth(date: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  const base = new Date(Date.UTC(year, month, 1));
-  const nextYear = base.getUTCFullYear();
-  const nextMonth = base.getUTCMonth();
-  const lastDay = new Date(Date.UTC(nextYear, nextMonth + 1, 0)).getUTCDate();
-  return `${nextYear}-${String(nextMonth + 1).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
-}
-
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -35,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const { data: charge, error: chargeError } = await supabase
       .from("cobrancas")
-      .select("id,vencimento,status_pagamento,creditos_previstos,cobrancas_financeiras(valor_original,valor_pago)")
+      .select("id,status_pagamento,cobrancas_financeiras(valor_original,valor_pago)")
       .eq("empresa_id", membership.empresa_id)
       .eq("id", body.chargeId)
       .single();
@@ -57,41 +48,11 @@ export async function POST(request: NextRequest) {
       if (paymentError) throw paymentError;
     }
 
-    const { data: task, error: taskError } = await supabase
-      .from("tarefas_operacionais")
-      .select("id,tipo,status")
-      .eq("empresa_id", membership.empresa_id)
-      .eq("cobranca_id", charge.id)
-      .eq("status", "pendente")
-      .in("tipo", ["renovar", "novo_cliente"])
-      .order("criado_em", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (taskError) throw taskError;
-
-    let renewed = false;
-    let creditsMoved = 0;
-    if (task?.id) {
-      const { data: result, error: completeError } = await supabase.rpc("concluir_tarefa_operacional", {
-        p_tarefa_id: task.id,
-        p_observacao: "Pagamento e renovação concluídos pelo administrador via ação rápida.",
-      });
-      if (completeError) throw completeError;
-      const payload = result as { concluida?: boolean; ja_concluida?: boolean; creditos_movidos?: number } | null;
-      renewed = Boolean(payload?.concluida || payload?.ja_concluida);
-      creditsMoved = Number(payload?.creditos_movidos ?? 0);
-    } else {
-      renewed = Number(charge.creditos_previstos ?? 0) === 0;
-    }
-
     return NextResponse.json({
       ok: true,
       paid: true,
-      renewed,
-      creditsMoved,
-      nextDue: addOneMonth(charge.vencimento),
-      warning: renewed ? null : "Pagamento registrado, mas não encontrei uma renovação pendente para concluir automaticamente.",
+      renewed: false,
+      warning: "Pagamento registrado. Agora marque como renovado quando concluir a renovação.",
     });
   } catch (cause) {
     const error = cause instanceof Error ? cause.message : (cause && typeof cause === "object" && "message" in cause ? String((cause as { message?: unknown }).message) : "Não foi possível marcar como pago.");
