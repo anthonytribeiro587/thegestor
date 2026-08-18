@@ -75,7 +75,7 @@ function paymentMethod(row: ChargeRow) {
 }
 
 function taskActionLabel(type: string | null) {
-  return type === "novo_cliente" ? "Ativar cliente" : "Marcar renovado";
+  return type === "novo_cliente" ? "Ativar" : "Renovado";
 }
 
 export default function ChargesPage() {
@@ -165,13 +165,10 @@ export default function ChargesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chargeId: charge.id }),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string; renewed?: boolean; nextDue?: string; warning?: string | null };
+      const payload = await response.json() as { ok?: boolean; error?: string; warning?: string | null };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível marcar como pago.");
 
-      const nextDueText = payload.nextDue ? formatDateBR(payload.nextDue) : "o próximo mês";
-      setNotice(payload.renewed
-        ? `${charge.client}: pago e renovado. Próximo vencimento previsto em ${nextDueText}.`
-        : `${charge.client}: pagamento registrado. ${payload.warning ?? "Confira a renovação."}`);
+      setNotice(`${charge.client}: pagamento registrado. Agora confirme a renovação quando ela for feita.`);
       await loadData();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível marcar como pago.");
@@ -192,7 +189,7 @@ export default function ChargesPage() {
         p_observacao: charge.taskType === "novo_cliente" ? "Cliente ativado pelo administrador na tela de cobranças" : "Renovação concluída pelo administrador na tela de cobranças",
       });
       if (rpcError) throw rpcError;
-      setNotice(`${charge.client}: ${charge.taskType === "novo_cliente" ? "cliente ativado" : "renovação marcada como concluída"}.`);
+      setNotice(`${charge.client}: ${charge.taskType === "novo_cliente" ? "cliente ativado" : "renovação concluída"}.`);
       await loadData();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível concluir a renovação.");
@@ -254,7 +251,7 @@ export default function ChargesPage() {
                     <div className={`${styles.financeItem} ${styles.financeBalance}`}><span>Saldo</span><strong>{currency.format(charge.balance)}</strong></div>
                   </div>
                   <div className={styles.actionCell}>
-                    {charge.balance > 0 ? <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>{quickPayingId === charge.id ? "Salvando..." : charge.status === "Parcial" ? "Quitar" : "Pago"}</button> : null}
+                    {charge.balance > 0 ? <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>{quickPayingId === charge.id ? "Salvando..." : "Pago"}</button> : null}
                     {charge.balance === 0 && charge.taskId ? <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>{savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}</button> : null}
                     <button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>{charge.balance > 0 || charge.taskId ? "Ver" : "Detalhes"}</button>
                   </div>
