@@ -90,24 +90,48 @@ export default function ChargesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadData = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+    }
+
     try {
       const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
       const userId = sessionData.session?.user.id;
       if (!userId) throw new Error("Sessão inválida. Entre novamente.");
 
-      const { data: membership, error: membershipError } = await supabase.from("usuarios_empresa").select("empresa_id").eq("user_id", userId).eq("ativo", true).limit(1).maybeSingle();
+      const { data: membership, error: membershipError } = await supabase
+        .from("usuarios_empresa")
+        .select("empresa_id")
+        .eq("user_id", userId)
+        .eq("ativo", true)
+        .limit(1)
+        .maybeSingle();
+
       if (membershipError) throw membershipError;
       if (!membership?.empresa_id) throw new Error("Usuário sem empresa vinculada.");
       setEmpresaId(membership.empresa_id);
 
       const [chargesResult, queueResult] = await Promise.all([
-        supabase.from("cobrancas").select("id,vencimento,status_pagamento,pago_em,origem,creditos_previstos,clientes(nome),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(metodo,status)").eq("empresa_id", membership.empresa_id).neq("status_pagamento", "cancelado").order("vencimento", { ascending: true }).limit(500),
-        supabase.from("fila_operacional").select("tarefa_id,cobranca_id,tipo,cliente_nome").eq("empresa_id", membership.empresa_id).eq("status_tarefa", "pendente").order("criado_em", { ascending: true }).limit(500),
+        supabase
+          .from("cobrancas")
+          .select("id,vencimento,status_pagamento,pago_em,origem,creditos_previstos,clientes(nome),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(metodo,status)")
+          .eq("empresa_id", membership.empresa_id)
+          .neq("status_pagamento", "cancelado")
+          .order("vencimento", { ascending: true })
+          .limit(500),
+        supabase
+          .from("fila_operacional")
+          .select("tarefa_id,cobranca_id,tipo,cliente_nome")
+          .eq("empresa_id", membership.empresa_id)
+          .eq("status_tarefa", "pendente")
+          .order("criado_em", { ascending: true })
+          .limit(500),
       ]);
+
       if (chargesResult.error) throw chargesResult.error;
       if (queueResult.error) throw queueResult.error;
 
@@ -127,6 +151,7 @@ export default function ChargesPage() {
         const status: UiCharge["status"] = row.status_pagamento !== "pago" && paid > 0 && paid < original ? "Parcial" : operational;
         const task = taskByCharge.get(row.id) ?? null;
         const needsAction = Boolean(task) || status === "Atrasado" || status === "Parcial" || (balance > 0 && row.vencimento === today);
+
         return {
           id: row.id,
           client: first(row.clientes)?.nome ?? "Cliente",
@@ -144,35 +169,54 @@ export default function ChargesPage() {
           needsAction,
         };
       });
+
       setCharges(mapped);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar as cobranças.");
+      const message = cause instanceof Error ? cause.message : "Não foi possível carregar as cobranças.";
+      if (!silent) setError(message);
+      else console.warn("Falha ao sincronizar cobranças em segundo plano:", message);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   async function quickPay(charge: UiCharge) {
     if (quickPayingId || charge.balance <= 0) return;
     setQuickPayingId(charge.id);
     setError(null);
     setNotice(null);
+
     try {
       const response = await fetch("/api/cobrancas/quick-pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chargeId: charge.id }),
       });
-      const payload = await response.json() as { ok?: boolean; error?: string; warning?: string | null };
+      const payload = await response.json() as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível marcar como pago.");
 
+      const paidAt = new Date().toISOString();
+      setCharges((current) => current.map((item) => item.id === charge.id ? {
+        ...item,
+        status: "Pago",
+        paidAt,
+        paymentMethod: "Manual",
+        paidValue: item.value,
+        balance: 0,
+        needsAction: true,
+      } : item));
       setNotice(`${charge.client}: pagamento registrado. Agora confirme a renovação quando ela for feita.`);
-      await loadData();
+
+      // A confirmação financeira já terminou. O restante é apenas reconciliação de tela,
+      // então não deve manter o usuário preso em "Salvando...".
+      setQuickPayingId(null);
+      void loadData({ silent: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível marcar como pago.");
-    } finally {
       setQuickPayingId(null);
     }
   }
@@ -182,18 +226,29 @@ export default function ChargesPage() {
     setSavingTaskId(charge.taskId);
     setError(null);
     setNotice(null);
+
     try {
       const supabase = createClient();
       const { error: rpcError } = await supabase.rpc("concluir_tarefa_operacional", {
         p_tarefa_id: charge.taskId,
-        p_observacao: charge.taskType === "novo_cliente" ? "Cliente ativado pelo administrador na tela de cobranças" : "Renovação concluída pelo administrador na tela de cobranças",
+        p_observacao: charge.taskType === "novo_cliente"
+          ? "Cliente ativado pelo administrador na tela de cobranças"
+          : "Renovação concluída pelo administrador na tela de cobranças",
       });
       if (rpcError) throw rpcError;
+
+      setCharges((current) => current.map((item) => item.id === charge.id ? {
+        ...item,
+        taskId: null,
+        taskType: null,
+        needsAction: false,
+      } : item));
       setNotice(`${charge.client}: ${charge.taskType === "novo_cliente" ? "cliente ativado" : "renovação concluída"}.`);
-      await loadData();
+
+      setSavingTaskId(null);
+      void loadData({ silent: true });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível concluir a renovação.");
-    } finally {
       setSavingTaskId(null);
     }
   }
@@ -224,10 +279,21 @@ export default function ChargesPage() {
 
       <div className={styles.workspace}>
         <section className={styles.chargePanel}>
-          <div className={styles.panelHead}><h2>Cobranças e pendências</h2><span>{visible.length} registro(s)</span></div>
+          <div className={styles.panelHead}>
+            <h2>Cobranças e pendências</h2>
+            <span>{visible.length} registro(s)</span>
+          </div>
+
           <div className={styles.toolbar}>
-            <label className={styles.search}><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente..." /></label>
-            <div className={styles.filters}>{(["Precisa de ação", "Atrasado", "A vencer", "Parcial", "Pago", "Todas"] as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}</div>
+            <label className={styles.search}>
+              <Search size={16} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente..." />
+            </label>
+            <div className={styles.filters}>
+              {(["Precisa de ação", "Atrasado", "A vencer", "Parcial", "Pago", "Todas"] as Tab[]).map((item) => (
+                <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>
+              ))}
+            </div>
           </div>
 
           {notice ? <div className="form-success" role="status" style={{ margin: 14 }}>{notice}</div> : null}
@@ -236,7 +302,9 @@ export default function ChargesPage() {
 
           {!loading && !error && visible.length ? (
             <>
-              <div className={styles.chargeHeader}><span>Cliente</span><span>Vencimento</span><span>Status</span><span>Financeiro</span><span style={{ textAlign: "right" }}>Ação</span></div>
+              <div className={styles.chargeHeader}>
+                <span>Cliente</span><span>Vencimento</span><span>Status</span><span>Financeiro</span><span style={{ textAlign: "right" }}>Ação</span>
+              </div>
               {visible.map((charge) => (
                 <div key={charge.id} className={`${styles.chargeRow} ${charge.status === "Atrasado" ? styles.chargeLate : ""} ${charge.status === "Parcial" ? styles.chargePartial : ""}`}>
                   <div className={styles.clientCell}><b>{charge.client}</b><small>{charge.description}</small></div>
@@ -251,18 +319,34 @@ export default function ChargesPage() {
                     <div className={`${styles.financeItem} ${styles.financeBalance}`}><span>Saldo</span><strong>{currency.format(charge.balance)}</strong></div>
                   </div>
                   <div className={styles.actionCell}>
-                    {charge.balance > 0 ? <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>{quickPayingId === charge.id ? "Salvando..." : "Pago"}</button> : null}
-                    {charge.balance === 0 && charge.taskId ? <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>{savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}</button> : null}
+                    {charge.balance > 0 ? (
+                      <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>
+                        {quickPayingId === charge.id ? "Salvando..." : "Pago"}
+                      </button>
+                    ) : null}
+                    {charge.balance === 0 && charge.taskId ? (
+                      <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>
+                        {savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}
+                      </button>
+                    ) : null}
                     <button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>{charge.balance > 0 || charge.taskId ? "Ver" : "Detalhes"}</button>
                   </div>
                 </div>
               ))}
             </>
-          ) : !loading && !error ? <div className={styles.empty}>{tab === "Precisa de ação" ? "Nenhuma pendência agora. Está tudo em dia." : "Nenhuma cobrança encontrada."}</div> : null}
+          ) : !loading && !error ? (
+            <div className={styles.empty}>{tab === "Precisa de ação" ? "Nenhuma pendência agora. Está tudo em dia." : "Nenhuma cobrança encontrada."}</div>
+          ) : null}
         </section>
       </div>
 
-      <ChargeActionsDrawer open={Boolean(selectedChargeId)} chargeId={selectedChargeId} empresaId={empresaId} onClose={() => setSelectedChargeId(null)} onSaved={loadData} />
+      <ChargeActionsDrawer
+        open={Boolean(selectedChargeId)}
+        chargeId={selectedChargeId}
+        empresaId={empresaId}
+        onClose={() => setSelectedChargeId(null)}
+        onSaved={() => void loadData({ silent: true })}
+      />
     </AppShell>
   );
 }
