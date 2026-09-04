@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEvolutionText } from "@/lib/evolution";
 import { createPixOrder, extractPix, mercadoPagoEnvironment, safeMercadoPagoOrderSummary } from "@/lib/mercado-pago";
+import { addDays, automationMatchesDate, renderBillingMessage, type MessageAutomationTrigger } from "@/lib/whatsapp-automation-rules";
 
 export type BillingAutomationConfig = {
   empresa_id: string;
@@ -13,7 +14,7 @@ export type MessageAutomation = {
   id: string;
   empresa_id: string;
   nome: string;
-  gatilho: "antes_vencimento" | "vencimento" | "atraso";
+  gatilho: MessageAutomationTrigger;
   dias_deslocamento: number;
   mensagem: string;
   incluir_pagamento: boolean;
@@ -48,61 +49,6 @@ type ChargeRow = {
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-function dateOnly(value: string) {
-  return new Date(`${value.slice(0, 10)}T12:00:00Z`);
-}
-
-function addDays(value: string, days: number) {
-  const date = dateOnly(value);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDateBR(value: string) {
-  const [year, month, day] = value.slice(0, 10).split("-");
-  return `${day}/${month}/${year}`;
-}
-
-function formatMoney(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
-
-function financialBalance(financial: FinancialJoin | null) {
-  if (!financial) return 0;
-  return Math.max(
-    Number(financial.valor_original ?? 0)
-      + Number(financial.acrescimo ?? 0)
-      - Number(financial.desconto ?? 0)
-      - Number(financial.valor_pago ?? 0),
-    0,
-  );
-}
-
-export function renderBillingMessage(input: {
-  template: string;
-  name: string;
-  dueDate: string;
-  amount: number;
-  paymentLink?: string | null;
-}) {
-  const firstName = input.name.trim().split(/\s+/)[0] || input.name.trim();
-  const payment = input.paymentLink ? `\n\nPagamento: ${input.paymentLink}` : "";
-  return input.template
-    .replaceAll("{nome}", firstName)
-    .replaceAll("{cliente}", input.name.trim())
-    .replaceAll("{vencimento}", formatDateBR(input.dueDate))
-    .replaceAll("{valor}", formatMoney(input.amount))
-    .replaceAll("{link_pagamento}", input.paymentLink ?? "")
-    .replaceAll("{pagamento}", payment)
-    .trim();
-}
-
-export function automationMatchesDate(today: string, dueDate: string, automation: Pick<MessageAutomation, "gatilho" | "dias_deslocamento">) {
-  if (automation.gatilho === "antes_vencimento") return today === addDays(dueDate, -Math.max(automation.dias_deslocamento, 0));
-  if (automation.gatilho === "vencimento") return today === dueDate;
-  return today === addDays(dueDate, Math.max(automation.dias_deslocamento, 0));
 }
 
 async function existingPaymentLink(admin: SupabaseClient, chargeId: string) {
