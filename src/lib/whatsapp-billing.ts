@@ -51,6 +51,17 @@ function first<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
+function financialBalance(financial: FinancialJoin | null) {
+  if (!financial) return 0;
+  return Math.max(
+    Number(financial.valor_original ?? 0)
+      + Number(financial.acrescimo ?? 0)
+      - Number(financial.desconto ?? 0)
+      - Number(financial.valor_pago ?? 0),
+    0,
+  );
+}
+
 async function existingPaymentLink(admin: SupabaseClient, chargeId: string) {
   const { data, error } = await admin
     .from("pagamentos")
