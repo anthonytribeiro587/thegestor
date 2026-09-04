@@ -84,9 +84,7 @@ create unique index if not exists mensagens_cobranca_automacao_unica_idx
   on public.mensagens_cobranca (cobranca_id, automacao_id)
   where automacao_id is not null;
 
-create unique index if not exists mensagens_cobranca_legado_unica_idx
-  on public.mensagens_cobranca (cobranca_id, tipo)
-  where automacao_id is null;
+drop index if exists public.mensagens_cobranca_legado_unica_idx;
 
 create index if not exists mensagens_cobranca_automacao_idx
   on public.mensagens_cobranca (automacao_id);
