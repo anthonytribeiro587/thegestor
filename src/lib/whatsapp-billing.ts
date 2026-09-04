@@ -227,7 +227,7 @@ async function loadCharges(admin: SupabaseClient, empresaId: string, automations
     .from("cobrancas")
     .select("id,empresa_id,cliente_id,competencia,vencimento,status_pagamento,clientes(nome,telefone,email,status),cobrancas_financeiras(valor_original,desconto,acrescimo,valor_pago)")
     .eq("empresa_id", empresaId)
-    .neq("status_pagamento", "pago")
+    .in("status_pagamento", ["pendente", "atrasado"])
     .gte("vencimento", minDate)
     .lte("vencimento", maxDate)
     .order("vencimento", { ascending: true });
