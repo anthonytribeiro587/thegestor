@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { connectEvolutionInstance, evolutionConfigured, getEvolutionConnectionState, sendEvolutionText } from "@/lib/evolution";
+import { connectEvolutionInstance, evolutionConfigured, getEvolutionConfigurationStatus, getEvolutionConnectionState, sendEvolutionText } from "@/lib/evolution";
 import { mercadoPagoEnvironment } from "@/lib/mercado-pago";
 import { createClient } from "@/lib/supabase/server";
 
@@ -60,9 +60,10 @@ export async function GET() {
     if (automationError) throw automationError;
     if (messagesError) throw messagesError;
 
+    const evolutionStatus = await getEvolutionConfigurationStatus();
     let connection: { instance: string; state: string } | null = null;
-    let connectionError: string | null = null;
-    if (evolutionConfigured()) {
+    let connectionError: string | null = evolutionStatus.error;
+    if (evolutionStatus.configured) {
       try {
         connection = await getEvolutionConnectionState();
       } catch (cause) {
@@ -72,11 +73,12 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      configured: evolutionConfigured(),
-      urlConfigured: Boolean(process.env.EVOLUTION_API_URL),
-      apiKeyConfigured: Boolean(process.env.EVOLUTION_API_KEY),
-      instanceConfigured: Boolean(process.env.EVOLUTION_INSTANCE),
-      instance: process.env.EVOLUTION_INSTANCE ?? null,
+      configured: evolutionStatus.configured,
+      credentialSource: evolutionStatus.source,
+      urlConfigured: evolutionStatus.urlConfigured,
+      apiKeyConfigured: evolutionStatus.apiKeyConfigured,
+      instanceConfigured: evolutionStatus.instanceConfigured,
+      instance: evolutionStatus.instance,
       connection,
       connectionError,
       phoneCoverage: coverage,
@@ -136,7 +138,7 @@ export async function POST(request: NextRequest) {
         if (mercadoPagoEnvironment() !== "production") {
           return NextResponse.json({ ok: false, error: "Para ativar mensagens automáticas, primeiro coloque o Mercado Pago em Produção." }, { status: 409 });
         }
-        if (!evolutionConfigured()) {
+        if (!(await evolutionConfigured())) {
           return NextResponse.json({ ok: false, error: "Evolution API não está configurada." }, { status: 409 });
         }
         const state = await getEvolutionConnectionState();
@@ -167,7 +169,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, action: "saveAutomation", enabled: Boolean(body.enabled) });
     }
 
-    if (!evolutionConfigured()) {
+    if (!(await evolutionConfigured())) {
       return NextResponse.json({ ok: false, error: "Configure EVOLUTION_API_URL, EVOLUTION_API_KEY e EVOLUTION_INSTANCE no Vercel." }, { status: 422 });
     }
 
