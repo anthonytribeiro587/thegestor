@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CircleDollarSign, CreditCard, Link2, LogOut, Settings, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, CircleDollarSign, CreditCard, Link2, LogOut, Settings, ShieldCheck, Users, Workflow } from "lucide-react";
 import { logoutAction } from "@/app/auth/actions";
 
 const adminItems = [
   { href: "/dashboard", label: "Início", icon: BarChart3 },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/cobrancas", label: "Cobranças", icon: CircleDollarSign },
+  { href: "/automacoes", label: "Automações", icon: Workflow },
   { href: "/integracoes", label: "Integrações", icon: Link2 },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
