@@ -18,11 +18,14 @@ type ChargeRow = {
   cobrancas_financeiras: { valor_original: number; valor_pago: number | null } | { valor_original: number; valor_pago: number | null }[] | null;
 };
 type CreditRow = { creditos_utilizados: number | null; creditos_previstos: number | null };
+type ParcelChargeRow = { competencia: string; status_pagamento: string };
 type ParcelSubscriptionRow = {
   id: string;
+  parcela_atual: number | null;
+  parcelas_total: number | null;
   clientes: { status: string } | { status: string }[] | null;
+  cobrancas: ParcelChargeRow[] | null;
 };
-type CurrentChargeSubscriptionRow = { assinatura_id: string | null };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -61,14 +64,13 @@ export default async function DashboardPage() {
   let creditCost = 8;
 
   if (empresaId) {
-    const [openResult, paidResult, renewalsResult, creditsResult, configResult, parcelSubscriptionsResult, currentChargesResult] = await Promise.all([
+    const [openResult, paidResult, renewalsResult, creditsResult, configResult, parcelSubscriptionsResult] = await Promise.all([
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,clientes(nome),cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).in("status_pagamento", ["pendente", "atrasado"]).order("vencimento", { ascending: true }),
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).eq("status_pagamento", "pago").gte("pago_em", `${firstDay}T00:00:00`).lt("pago_em", `${nextMonth}T00:00:00`),
       supabase.from("tarefas_operacionais").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "pendente").in("tipo", ["renovar", "novo_cliente"]),
       supabase.from("cobrancas").select("creditos_utilizados,creditos_previstos").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth).neq("status_pagamento", "cancelado"),
       supabase.from("configuracoes_empresa").select("custo_medio_credito").eq("empresa_id", empresaId).maybeSingle(),
-      supabase.from("assinaturas").select("id,clientes(status)").eq("empresa_id", empresaId).eq("status", "ativa").not("parcelas_total", "is", null),
-      supabase.from("cobrancas").select("assinatura_id").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth),
+      supabase.from("assinaturas").select("id,parcela_atual,parcelas_total,clientes(status),cobrancas(competencia,status_pagamento)").eq("empresa_id", empresaId).eq("status", "ativa").not("parcelas_total", "is", null),
     ]);
 
     openCharges = (openResult.data ?? []) as ChargeRow[];
@@ -77,13 +79,14 @@ export default async function DashboardPage() {
     creditRows = (creditsResult.data ?? []) as CreditRow[];
     creditCost = Number(configResult.data?.custo_medio_credito ?? 8);
 
-    const currentSubscriptionIds = new Set(
-      ((currentChargesResult.data ?? []) as CurrentChargeSubscriptionRow[])
-        .map((row) => row.assinatura_id)
-        .filter((id): id is string => Boolean(id)),
-    );
     cycleReviewCount = ((parcelSubscriptionsResult.data ?? []) as ParcelSubscriptionRow[])
-      .filter((subscription) => first(subscription.clientes)?.status === "ativo" && !currentSubscriptionIds.has(subscription.id))
+      .filter((subscription) => {
+        if (first(subscription.clientes)?.status !== "ativo") return false;
+        if (subscription.parcela_atual === null || subscription.parcelas_total === null) return false;
+        if (subscription.parcela_atual < subscription.parcelas_total) return false;
+        const latestCharge = [...(subscription.cobrancas ?? [])].sort((a, b) => b.competencia.localeCompare(a.competencia))[0];
+        return latestCharge?.status_pagamento === "pago";
+      })
       .length;
   }
 
@@ -118,11 +121,11 @@ export default async function DashboardPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <span className="stat-icon tone-orange" style={{ width: 38, height: 38 }}><AlertTriangle size={18} /></span>
             <div>
-              <b style={{ display: "block", fontSize: 12 }}>{cycleReviewCount} ciclo(s) precisam de revisão</b>
-              <small style={{ color: "var(--muted)", fontSize: 10 }}>Assinaturas com mensalidade atual/total não recebem cobrança automática até a regra do próximo ciclo ser definida.</small>
+              <b style={{ display: "block", fontSize: 12 }}>{cycleReviewCount} cliente(s) aguardam decisão de renovação</b>
+              <small style={{ color: "var(--muted)", fontSize: 10 }}>O ciclo terminou e a última mensalidade já foi paga. Confirme se o cliente quer seguir no mensal ou iniciar um novo trimestral.</small>
             </div>
           </div>
-          <Link className="button secondary" href="/clientes#revisao-ciclos">Revisar ciclos</Link>
+          <Link className="button secondary" href="/clientes#revisao-ciclos">Definir renovação</Link>
         </section>
       ) : null}
 

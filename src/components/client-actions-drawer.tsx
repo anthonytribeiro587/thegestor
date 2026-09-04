@@ -188,6 +188,19 @@ export function ClientActionsDrawer({
     return `${detail.subscription.parcela_atual}/${detail.subscription.parcelas_total}`;
   }, [detail]);
 
+  const latestCharge = detail?.charges[0] ?? null;
+  const cycleCompleted = Boolean(
+    detail?.subscription.parcela_atual
+    && detail.subscription.parcelas_total
+    && detail.subscription.parcela_atual >= detail.subscription.parcelas_total,
+  );
+  const canChooseRenewal = Boolean(
+    cycleCompleted
+    && detail?.client.status === "ativo"
+    && detail.subscription.status === "ativa"
+    && latestCharge?.status_pagamento === "pago",
+  );
+
   function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
     setForm((current) => current ? { ...current, [field]: value } : current);
   }
@@ -233,6 +246,30 @@ export function ClientActionsDrawer({
       setMode("view");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível salvar as alterações.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function defineRenewal(modality: "mensal" | "trimestral") {
+    if (!detail || !empresaId || saving || !canChooseRenewal) return;
+    const label = modality === "trimestral" ? "trimestral (novo ciclo 1/3)" : "mensal";
+    if (!window.confirm(`Confirmar renovação ${label}? A próxima cobrança será criada com o valor e vencimento atuais.`)) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const { error: rpcError } = await supabase.rpc("definir_renovacao_assinatura", {
+        p_empresa_id: empresaId,
+        p_assinatura_id: detail.subscription.id,
+        p_modalidade: modality,
+      });
+      if (rpcError) throw rpcError;
+      await onSaved();
+      await loadDetail();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível definir a renovação.");
     } finally {
       setSaving(false);
     }
@@ -298,6 +335,27 @@ export function ClientActionsDrawer({
               <div className={styles.summaryItem}><span>Ciclo</span><strong>{cycle}</strong><small>mensalidades</small></div>
               <div className={styles.summaryItem}><span>Cadastro</span><strong>{formatDateBR(detail.client.criado_em.slice(0, 10))}</strong><small>no thegestor</small></div>
             </div>
+
+            {cycleCompleted ? (
+              <section className={styles.section}>
+                <div className={styles.sectionHead}><h3>Renovação do ciclo</h3></div>
+                <div className={styles.sectionBody}>
+                  {canChooseRenewal ? (
+                    <>
+                      <div className={styles.note}>
+                        O ciclo {cycle} foi concluído e a última mensalidade está paga. Confirme com o cliente como ele quer continuar. A nova cobrança usará o valor de {currency.format(agreedValue(detail.subscription))} e vencimento no dia {detail.subscription.dia_vencimento}.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+                        <button className="button primary" type="button" disabled={saving} onClick={() => void defineRenewal("mensal")}>Renovar mensal</button>
+                        <button className="button secondary" type="button" disabled={saving} onClick={() => void defineRenewal("trimestral")}>Renovar trimestral · 1/3</button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.note}>O ciclo {cycle} terminou, mas a última mensalidade ainda não está quitada. Primeiro finalize o pagamento; depois o sistema liberará a escolha entre mensal e trimestral.</div>
+                  )}
+                </div>
+              </section>
+            ) : null}
 
             <section className={styles.section}>
               <div className={styles.sectionHead}><h3>Contato e observações</h3></div>
