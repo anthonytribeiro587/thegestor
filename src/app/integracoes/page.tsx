@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { CheckCircle2, Copy, CreditCard, MessageCircle, RefreshCw, ShieldCheck, Webhook } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
@@ -363,54 +364,17 @@ export default function IntegrationsPage() {
 
             <div className="integration-card" style={{ gridColumn: "1 / -1" }}>
               <div className="integration-head">
-                <div>
-                  <h3>Automação de cobranças</h3>
-                  <p style={{ margin: 0 }}>Executa diariamente às 10:10 (Brasília), sem duplicar mensagens da mesma cobrança.</p>
+                <div style={{ display: "flex", gap: 11, alignItems: "center" }}>
+                  <span className="integration-icon"><MessageCircle size={20} /></span>
+                  <div><h3>Automações de mensagens</h3><p style={{ margin: 0 }}>As regras de cobrança agora são criadas e gerenciadas em uma área própria.</p></div>
                 </div>
-                <StatusBadge status={automation.whatsapp_ativo ? "Conectado" : "Pendente"} />
+                <Link className="button primary" href="/automacoes">Abrir Automações</Link>
               </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 12, marginTop: 16 }}>
                 <div className="integration-field"><label>Evolution</label><code>{waConnected ? "open ✓" : "não conectada"}</code></div>
-                <div className="integration-field"><label>Mercado Pago</label><code>{wa?.mercadoPagoEnvironment === "production" ? "Produção ✓" : "Teste — bloqueado"}</code></div>
-                <div className="integration-field"><label>Telefones disponíveis</label><code>{wa?.phoneCoverage.withPhone ?? 0} de {wa?.phoneCoverage.total ?? 0}</code></div>
+                <div className="integration-field"><label>Clientes com telefone</label><code>{wa?.phoneCoverage.withPhone ?? 0} de {wa?.phoneCoverage.total ?? 0}</code></div>
+                <div className="integration-field"><label>Envio geral</label><code>{automation.whatsapp_ativo ? "Ativo" : "Pausado"}</code></div>
               </div>
-
-              {!automationReady ? (
-                <div className="empty-note" style={{ marginTop: 14, textAlign: "left" }}>
-                  A ativação está protegida. Falta: {!waConnected ? "WhatsApp conectado; " : ""}{wa?.mercadoPagoEnvironment !== "production" ? "Mercado Pago em Produção; " : ""}{(wa?.phoneCoverage.withPhone ?? 0) <= 0 ? "telefones nos clientes." : ""}
-                </div>
-              ) : null}
-
-              <div className="form-grid" style={{ marginTop: 18 }}>
-                <label><span>Dias antes do vencimento</span><input type="number" min={0} max={30} value={automation.lembrete_antes_dias} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_antes_dias: Number(event.target.value) }))} /></label>
-                <label><span>Dias após o vencimento</span><input type="number" min={0} max={30} value={automation.lembrete_atraso_dias} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_atraso_dias: Number(event.target.value) }))} /></label>
-                <label><span>Limite máximo por dia</span><input type="number" min={1} max={100} value={automation.whatsapp_limite_diario} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_limite_diario: Number(event.target.value) }))} /></label>
-                <label style={{ alignSelf: "end", paddingBottom: 12 }}><span><input type="checkbox" checked={automation.lembrete_no_vencimento} onChange={(event) => setAutomation((current) => ({ ...current, lembrete_no_vencimento: event.target.checked }))} style={{ width: "auto", marginRight: 8 }} />Enviar também no dia do vencimento</span></label>
-
-                <label className="full"><span>Mensagem antes do vencimento</span><textarea rows={3} value={automation.whatsapp_mensagem_antes} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_antes: event.target.value }))} /></label>
-                <div className="full" style={{ padding: "10px 12px", borderRadius: 10, background: "#f7f9fc", whiteSpace: "pre-wrap", fontSize: 13 }}><b>Prévia:</b><br />{previewTemplate(automation.whatsapp_mensagem_antes)}</div>
-
-                <label className="full"><span>Mensagem no vencimento</span><textarea rows={3} value={automation.whatsapp_mensagem_vencimento} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_vencimento: event.target.value }))} /></label>
-                <label className="full"><span>Mensagem em atraso</span><textarea rows={3} value={automation.whatsapp_mensagem_atraso} onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_mensagem_atraso: event.target.value }))} /></label>
-              </div>
-
-              <p style={{ marginTop: 10, color: "#6b7a91", fontSize: 13 }}>Variáveis disponíveis: <code>{"{nome}"}</code>, <code>{"{cliente}"}</code>, <code>{"{vencimento}"}</code>, <code>{"{valor}"}</code>, <code>{"{link_pagamento}"}</code> e <code>{"{pagamento}"}</code>. O último inclui automaticamente uma linha com o link quando houver Pix.</p>
-
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 16, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                  <input
-                    type="checkbox"
-                    style={{ width: "auto" }}
-                    checked={automation.whatsapp_ativo}
-                    disabled={!automationReady && !automation.whatsapp_ativo}
-                    onChange={(event) => setAutomation((current) => ({ ...current, whatsapp_ativo: event.target.checked }))}
-                  />
-                  Ativar mensagens automáticas
-                </label>
-                <button className="button primary" disabled={automationSaving} onClick={() => void saveAutomation()}>{automationSaving ? "Salvando..." : "Salvar regras"}</button>
-              </div>
-              {automationMessage ? <div className={automationMessage.toLowerCase().includes("não") || automationMessage.toLowerCase().includes("falta") || automationMessage.toLowerCase().includes("primeiro") ? "form-error" : "form-success"} style={{ marginTop: 12 }}>{automationMessage}</div> : null}
             </div>
 
             <div className="integration-card" style={{ gridColumn: "1 / -1" }}>
