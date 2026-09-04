@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { evolutionConfigured, getEvolutionConnectionState } from "@/lib/evolution";
+import { evolutionConfigured, getEvolutionConfigurationStatus, getEvolutionConnectionState } from "@/lib/evolution";
 import { createClient } from "@/lib/supabase/server";
 
 type Trigger = "antes_vencimento" | "vencimento" | "atraso";
@@ -70,9 +70,10 @@ export async function GET() {
     if (configError) throw configError;
     if (messagesError) throw messagesError;
 
+    const evolutionStatus = await getEvolutionConfigurationStatus();
     let connection: { instance: string; state: string } | null = null;
-    let connectionError: string | null = null;
-    if (evolutionConfigured()) {
+    let connectionError: string | null = evolutionStatus.error;
+    if (evolutionStatus.configured) {
       try {
         connection = await getEvolutionConnectionState();
       } catch (cause) {
@@ -88,7 +89,8 @@ export async function GET() {
         dailyLimit: Number(config?.whatsapp_limite_diario ?? 30),
       },
       whatsapp: {
-        configured: evolutionConfigured(),
+        configured: evolutionStatus.configured,
+        credentialSource: evolutionStatus.source,
         connection,
         error: connectionError,
       },
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: "O limite diário precisa estar entre 1 e 100." }, { status: 400 });
       }
       if (enabled) {
-        if (!evolutionConfigured()) {
+        if (!(await evolutionConfigured())) {
           return NextResponse.json({ ok: false, error: "Conecte a Evolution API antes de ativar as automações." }, { status: 409 });
         }
         const state = await getEvolutionConnectionState();
