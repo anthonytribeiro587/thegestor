@@ -18,6 +18,11 @@ type ChargeRow = {
   cobrancas_financeiras: { valor_original: number; valor_pago: number | null } | { valor_original: number; valor_pago: number | null }[] | null;
 };
 type CreditRow = { creditos_utilizados: number | null; creditos_previstos: number | null };
+type ParcelSubscriptionRow = {
+  id: string;
+  clientes: { status: string } | { status: string }[] | null;
+};
+type CurrentChargeSubscriptionRow = { assinatura_id: string | null };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -52,15 +57,18 @@ export default async function DashboardPage() {
   let paidThisMonth: ChargeRow[] = [];
   let creditRows: CreditRow[] = [];
   let pendingRenewals = 0;
+  let cycleReviewCount = 0;
   let creditCost = 8;
 
   if (empresaId) {
-    const [openResult, paidResult, renewalsResult, creditsResult, configResult] = await Promise.all([
+    const [openResult, paidResult, renewalsResult, creditsResult, configResult, parcelSubscriptionsResult, currentChargesResult] = await Promise.all([
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,clientes(nome),cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).in("status_pagamento", ["pendente", "atrasado"]).order("vencimento", { ascending: true }),
       supabase.from("cobrancas").select("id,competencia,vencimento,status_pagamento,pago_em,cobrancas_financeiras(valor_original,valor_pago)").eq("empresa_id", empresaId).eq("status_pagamento", "pago").gte("pago_em", `${firstDay}T00:00:00`).lt("pago_em", `${nextMonth}T00:00:00`),
       supabase.from("tarefas_operacionais").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("status", "pendente").in("tipo", ["renovar", "novo_cliente"]),
       supabase.from("cobrancas").select("creditos_utilizados,creditos_previstos").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth).neq("status_pagamento", "cancelado"),
       supabase.from("configuracoes_empresa").select("custo_medio_credito").eq("empresa_id", empresaId).maybeSingle(),
+      supabase.from("assinaturas").select("id,clientes(status)").eq("empresa_id", empresaId).eq("status", "ativa").not("parcelas_total", "is", null),
+      supabase.from("cobrancas").select("assinatura_id").eq("empresa_id", empresaId).gte("competencia", firstDay).lt("competencia", nextMonth),
     ]);
 
     openCharges = (openResult.data ?? []) as ChargeRow[];
@@ -68,6 +76,15 @@ export default async function DashboardPage() {
     pendingRenewals = renewalsResult.count ?? 0;
     creditRows = (creditsResult.data ?? []) as CreditRow[];
     creditCost = Number(configResult.data?.custo_medio_credito ?? 8);
+
+    const currentSubscriptionIds = new Set(
+      ((currentChargesResult.data ?? []) as CurrentChargeSubscriptionRow[])
+        .map((row) => row.assinatura_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    cycleReviewCount = ((parcelSubscriptionsResult.data ?? []) as ParcelSubscriptionRow[])
+      .filter((subscription) => first(subscription.clientes)?.status === "ativo" && !currentSubscriptionIds.has(subscription.id))
+      .length;
   }
 
   const overdue = openCharges.filter((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado" && chargeBalance(charge) > 0);
@@ -95,6 +112,19 @@ export default async function DashboardPage() {
         <StatCard title="Para renovar" value={String(pendingRenewals)} helper="Pagamento já confirmado" icon={CheckCircle2} tone="green" />
         <StatCard title="Recebido no mês" value={currency.format(receivedThisMonth)} helper={`${paidThisMonth.length} cobrança(s) quitada(s)`} icon={CircleDollarSign} tone="green" />
       </section>
+
+      {cycleReviewCount > 0 ? (
+        <section className="card" style={{ marginBottom: 16, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <span className="stat-icon tone-orange" style={{ width: 38, height: 38 }}><AlertTriangle size={18} /></span>
+            <div>
+              <b style={{ display: "block", fontSize: 12 }}>{cycleReviewCount} ciclo(s) precisam de revisão</b>
+              <small style={{ color: "var(--muted)", fontSize: 10 }}>Assinaturas com mensalidade atual/total não recebem cobrança automática até a regra do próximo ciclo ser definida.</small>
+            </div>
+          </div>
+          <Link className="button secondary" href="/clientes#revisao-ciclos">Revisar ciclos</Link>
+        </section>
+      ) : null}
 
       <section className={styles.summaryGrid}>
         <article className={styles.panel}>

@@ -14,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { ClientStatus } from "@/lib/types";
 import styles from "./clientes.module.css";
 
-type Filter = "Todos" | "Ativos" | "Vencidos" | "Cancelados";
+type Filter = "Todos" | "Ativos" | "Vencidos" | "Cancelados" | "Revisar ciclos";
 type ActionMode = "view" | "edit";
 type DayFilter = "all" | number;
 
@@ -62,6 +62,7 @@ type UiClient = {
   status: ClientStatus;
   lastPayment: string;
   baseStatus: string;
+  cycleNeedsReview: boolean;
 };
 
 function first<T>(value: T | T[] | null | undefined): T | null {
@@ -82,7 +83,8 @@ function mapClient(row: DbClient, today: string): UiClient {
   const activeSubscription = row.assinaturas?.find((item) => item.status === "ativa") ?? row.assinaturas?.[0];
   const overdue = row.cobrancas?.some((charge) => operationalChargeStatus(charge.status_pagamento, charge.vencimento, today) === "Atrasado") ?? false;
   const currentMonth = today.slice(0, 7);
-  const currentCharge = row.cobrancas?.find((charge) => charge.competencia.slice(0, 7) === currentMonth) ?? row.cobrancas?.[0];
+  const currentMonthCharge = row.cobrancas?.find((charge) => charge.competencia.slice(0, 7) === currentMonth);
+  const currentCharge = currentMonthCharge ?? row.cobrancas?.[0];
   const paymentDates = (row.cobrancas ?? []).flatMap((charge) => [
     ...(charge.pago_em ? [charge.pago_em] : []),
     ...((charge.pagamentos ?? []).map((payment) => payment.pago_em ?? payment.criado_em)),
@@ -106,6 +108,7 @@ function mapClient(row: DbClient, today: string): UiClient {
     status,
     lastPayment: paymentDates[0] ? new Intl.DateTimeFormat("pt-BR").format(new Date(paymentDates[0])) : "—",
     baseStatus: row.status,
+    cycleNeedsReview: row.status === "ativo" && activeSubscription?.status === "ativa" && activeSubscription.parcelas_total !== null && !currentMonthCharge,
   };
 }
 
@@ -156,6 +159,10 @@ export default function ClientsPage() {
 
   useEffect(() => { void loadClients(); }, [loadClients]);
 
+  useEffect(() => {
+    if (window.location.hash === "#revisao-ciclos") setFilter("Revisar ciclos");
+  }, []);
+
   function openClient(clientId: string, mode: ActionMode) {
     setSelectedClientId(clientId);
     setActionMode(mode);
@@ -164,7 +171,11 @@ export default function ClientsPage() {
 
   const baseFiltered = useMemo(() => clients.filter((client) => {
     const matchesQuery = `${client.name} ${client.phone ?? ""} ${client.email ?? ""}`.toLowerCase().includes(query.toLowerCase());
-    const matchesFilter = filter === "Todos" || (filter === "Ativos" && client.status === "Ativo") || (filter === "Vencidos" && client.status === "Vencido") || (filter === "Cancelados" && client.status === "Cancelado");
+    const matchesFilter = filter === "Todos"
+      || (filter === "Ativos" && client.status === "Ativo")
+      || (filter === "Vencidos" && client.status === "Vencido")
+      || (filter === "Cancelados" && client.status === "Cancelado")
+      || (filter === "Revisar ciclos" && client.cycleNeedsReview);
     return matchesQuery && matchesFilter;
   }), [clients, query, filter]);
 
@@ -212,7 +223,7 @@ export default function ClientsPage() {
       <section className={styles.dayPanel}>
         <div className={styles.dayPanelHead}>
           <div><h2>Vencimentos por dia</h2><p>Mesma lógica da sua planilha: escolha um dia para focar somente nos clientes daquele vencimento.</p></div>
-          <div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div>
+          <div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados", "Revisar ciclos"] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div>
         </div>
         <div className={styles.dayNav}>
           <button className={`${styles.dayButton} ${styles.allButton} ${dayFilter === "all" ? styles.dayButtonActive : ""}`} onClick={() => setDayFilter("all")}><b>Todos</b><small>{baseFiltered.length}</small></button>
@@ -251,7 +262,7 @@ export default function ClientsPage() {
                     <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>Último pagamento: {client.lastPayment}</small></div></div>
                     <span>{client.plan}</span>
                     <div className={styles.credits}><span className={styles.creditUsed}>{client.creditsUsed} usado(s)</span><span className={styles.creditExpected}>{client.creditsExpected} previsto(s)</span></div>
-                    <span>{client.cycle}</span>
+                    <span title={client.cycleNeedsReview ? "Este ciclo precisa de revisão antes da próxima cobrança automática." : undefined} style={client.cycleNeedsReview ? { color: "var(--orange)", fontWeight: 700 } : undefined}>{client.cycleNeedsReview ? "Revisar · " : ""}{client.cycle}</span>
                     <StatusBadge status={client.status} />
                     <div className={styles.actions}><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div>
                   </div>
