@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { automationMatchesDate, renderBillingMessage } from "./whatsapp-billing";
+import { automationMatchesDate, renderBillingMessage } from "./whatsapp-automation-rules";
 
 describe("automationMatchesDate", () => {
   it("matches rules before due date", () => {
