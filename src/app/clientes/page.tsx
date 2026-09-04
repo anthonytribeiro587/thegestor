@@ -85,6 +85,10 @@ function mapClient(row: DbClient, today: string): UiClient {
   const currentMonth = today.slice(0, 7);
   const currentMonthCharge = row.cobrancas?.find((charge) => charge.competencia.slice(0, 7) === currentMonth);
   const currentCharge = currentMonthCharge ?? row.cobrancas?.[0];
+  const latestCharge = [...(row.cobrancas ?? [])].sort((a, b) => b.competencia.localeCompare(a.competencia))[0];
+  const cycleCompleted = activeSubscription?.parcela_atual !== null
+    && activeSubscription?.parcelas_total !== null
+    && Number(activeSubscription.parcela_atual) >= Number(activeSubscription.parcelas_total);
   const paymentDates = (row.cobrancas ?? []).flatMap((charge) => [
     ...(charge.pago_em ? [charge.pago_em] : []),
     ...((charge.pagamentos ?? []).map((payment) => payment.pago_em ?? payment.criado_em)),
@@ -108,7 +112,10 @@ function mapClient(row: DbClient, today: string): UiClient {
     status,
     lastPayment: paymentDates[0] ? new Intl.DateTimeFormat("pt-BR").format(new Date(paymentDates[0])) : "—",
     baseStatus: row.status,
-    cycleNeedsReview: row.status === "ativo" && activeSubscription?.status === "ativa" && activeSubscription.parcelas_total !== null && !currentMonthCharge,
+    cycleNeedsReview: row.status === "ativo"
+      && activeSubscription?.status === "ativa"
+      && cycleCompleted
+      && latestCharge?.status_pagamento === "pago",
   };
 }
 
@@ -262,7 +269,7 @@ export default function ClientsPage() {
                     <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>Último pagamento: {client.lastPayment}</small></div></div>
                     <span>{client.plan}</span>
                     <div className={styles.credits}><span className={styles.creditUsed}>{client.creditsUsed} usado(s)</span><span className={styles.creditExpected}>{client.creditsExpected} previsto(s)</span></div>
-                    <span title={client.cycleNeedsReview ? "Este ciclo precisa de revisão antes da próxima cobrança automática." : undefined} style={client.cycleNeedsReview ? { color: "var(--orange)", fontWeight: 700 } : undefined}>{client.cycleNeedsReview ? "Revisar · " : ""}{client.cycle}</span>
+                    <span title={client.cycleNeedsReview ? "Ciclo concluído e pago. Confirme se o cliente quer renovar mensal ou trimestral." : undefined} style={client.cycleNeedsReview ? { color: "var(--orange)", fontWeight: 700 } : undefined}>{client.cycleNeedsReview ? "Renovar · " : ""}{client.cycle}</span>
                     <StatusBadge status={client.status} />
                     <div className={styles.actions}><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div>
                   </div>
