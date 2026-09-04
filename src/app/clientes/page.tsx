@@ -86,9 +86,12 @@ function mapClient(row: DbClient, today: string): UiClient {
   const currentMonthCharge = row.cobrancas?.find((charge) => charge.competencia.slice(0, 7) === currentMonth);
   const currentCharge = currentMonthCharge ?? row.cobrancas?.[0];
   const latestCharge = [...(row.cobrancas ?? [])].sort((a, b) => b.competencia.localeCompare(a.competencia))[0];
-  const cycleCompleted = activeSubscription?.parcela_atual !== null
-    && activeSubscription?.parcelas_total !== null
-    && Number(activeSubscription.parcela_atual) >= Number(activeSubscription.parcelas_total);
+  const cycleCompleted = Boolean(
+    activeSubscription
+    && activeSubscription.parcela_atual !== null
+    && activeSubscription.parcelas_total !== null
+    && activeSubscription.parcela_atual >= activeSubscription.parcelas_total,
+  );
   const paymentDates = (row.cobrancas ?? []).flatMap((charge) => [
     ...(charge.pago_em ? [charge.pago_em] : []),
     ...((charge.pagamentos ?? []).map((payment) => payment.pago_em ?? payment.criado_em)),
