@@ -6,13 +6,18 @@ import { createPixOrder, extractPix, mercadoPagoEnvironment, safeMercadoPagoOrde
 export type BillingAutomationConfig = {
   empresa_id: string;
   whatsapp_ativo: boolean;
-  lembrete_antes_dias: number;
-  lembrete_no_vencimento: boolean;
-  lembrete_atraso_dias: number;
   whatsapp_limite_diario: number;
-  whatsapp_mensagem_antes: string;
-  whatsapp_mensagem_vencimento: string;
-  whatsapp_mensagem_atraso: string;
+};
+
+export type MessageAutomation = {
+  id: string;
+  empresa_id: string;
+  nome: string;
+  gatilho: "antes_vencimento" | "vencimento" | "atraso";
+  dias_deslocamento: number;
+  mensagem: string;
+  incluir_pagamento: boolean;
+  ativo: boolean;
 };
 
 type ClientJoin = {
@@ -39,8 +44,6 @@ type ChargeRow = {
   clientes: ClientJoin | ClientJoin[] | null;
   cobrancas_financeiras: FinancialJoin | FinancialJoin[] | null;
 };
-
-type MessageType = "antes_vencimento" | "vencimento" | "atraso";
 
 function first<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
@@ -96,17 +99,10 @@ export function renderBillingMessage(input: {
     .trim();
 }
 
-function classifyMessage(today: string, dueDate: string, config: BillingAutomationConfig): MessageType | null {
-  if (config.lembrete_antes_dias >= 0 && today === addDays(dueDate, -config.lembrete_antes_dias)) return "antes_vencimento";
-  if (config.lembrete_no_vencimento && today === dueDate) return "vencimento";
-  if (config.lembrete_atraso_dias >= 0 && today === addDays(dueDate, config.lembrete_atraso_dias)) return "atraso";
-  return null;
-}
-
-function templateFor(type: MessageType, config: BillingAutomationConfig) {
-  if (type === "antes_vencimento") return config.whatsapp_mensagem_antes;
-  if (type === "vencimento") return config.whatsapp_mensagem_vencimento;
-  return config.whatsapp_mensagem_atraso;
+export function automationMatchesDate(today: string, dueDate: string, automation: Pick<MessageAutomation, "gatilho" | "dias_deslocamento">) {
+  if (automation.gatilho === "antes_vencimento") return today === addDays(dueDate, -Math.max(automation.dias_deslocamento, 0));
+  if (automation.gatilho === "vencimento") return today === dueDate;
+  return today === addDays(dueDate, Math.max(automation.dias_deslocamento, 0));
 }
 
 async function existingPaymentLink(admin: SupabaseClient, chargeId: string) {
@@ -206,13 +202,31 @@ async function sentToday(admin: SupabaseClient, empresaId: string, today: string
   return count ?? 0;
 }
 
-async function loadCharges(admin: SupabaseClient, config: BillingAutomationConfig, today: string) {
-  const minDate = addDays(today, -Math.max(config.lembrete_atraso_dias, 0));
-  const maxDate = addDays(today, Math.max(config.lembrete_antes_dias, 0));
+async function loadAutomations(admin: SupabaseClient, empresaId: string) {
+  const { data, error } = await admin
+    .from("automacoes_mensagem")
+    .select("id,empresa_id,nome,gatilho,dias_deslocamento,mensagem,incluir_pagamento,ativo")
+    .eq("empresa_id", empresaId)
+    .eq("ativo", true)
+    .order("criado_em", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as MessageAutomation[];
+}
+
+async function loadCharges(admin: SupabaseClient, empresaId: string, automations: MessageAutomation[], today: string) {
+  const maxBefore = automations
+    .filter((item) => item.gatilho === "antes_vencimento")
+    .reduce((max, item) => Math.max(max, item.dias_deslocamento), 0);
+  const maxAfter = automations
+    .filter((item) => item.gatilho === "atraso")
+    .reduce((max, item) => Math.max(max, item.dias_deslocamento), 0);
+  const minDate = addDays(today, -maxAfter);
+  const maxDate = addDays(today, maxBefore);
+
   const { data, error } = await admin
     .from("cobrancas")
     .select("id,empresa_id,cliente_id,competencia,vencimento,status_pagamento,clientes(nome,telefone,email,status),cobrancas_financeiras(valor_original,desconto,acrescimo,valor_pago)")
-    .eq("empresa_id", config.empresa_id)
+    .eq("empresa_id", empresaId)
     .neq("status_pagamento", "pago")
     .gte("vencimento", minDate)
     .lte("vencimento", maxDate)
@@ -225,15 +239,19 @@ export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = 
   const today = saoPauloToday(now);
   const { data: configs, error: configError } = await admin
     .from("configuracoes_empresa")
-    .select("empresa_id,whatsapp_ativo,lembrete_antes_dias,lembrete_no_vencimento,lembrete_atraso_dias,whatsapp_limite_diario,whatsapp_mensagem_antes,whatsapp_mensagem_vencimento,whatsapp_mensagem_atraso")
+    .select("empresa_id,whatsapp_ativo,whatsapp_limite_diario")
     .eq("whatsapp_ativo", true);
   if (configError) throw configError;
 
-  const summary = { date: today, companies: 0, candidates: 0, sent: 0, ignored: 0, errors: 0, limitReached: 0 };
+  const summary = { date: today, companies: 0, automations: 0, candidates: 0, sent: 0, ignored: 0, errors: 0, limitReached: 0 };
 
   for (const rawConfig of configs ?? []) {
     const config = rawConfig as BillingAutomationConfig;
+    const automations = await loadAutomations(admin, config.empresa_id);
+    if (!automations.length) continue;
+
     summary.companies += 1;
+    summary.automations += automations.length;
     const alreadySent = await sentToday(admin, config.empresa_id, today);
     let remaining = Math.max(Number(config.whatsapp_limite_diario ?? 30) - alreadySent, 0);
     if (remaining <= 0) {
@@ -241,82 +259,87 @@ export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = 
       continue;
     }
 
-    const charges = await loadCharges(admin, config, today);
+    const charges = await loadCharges(admin, config.empresa_id, automations, today);
     for (const charge of charges) {
-      if (remaining <= 0) {
-        summary.limitReached += 1;
-        break;
-      }
+      const matches = automations.filter((automation) => automationMatchesDate(today, charge.vencimento, automation));
+      if (!matches.length) continue;
 
-      const type = classifyMessage(today, charge.vencimento, config);
-      if (!type) continue;
-      summary.candidates += 1;
+      for (const automation of matches) {
+        if (remaining <= 0) {
+          summary.limitReached += 1;
+          break;
+        }
+        summary.candidates += 1;
 
-      const client = first(charge.clientes);
-      const financial = first(charge.cobrancas_financeiras);
-      const phone = client?.telefone?.trim() ?? "";
-      const amount = financialBalance(financial);
-      if (!client || client.status !== "ativo" || !phone || amount <= 0) {
-        summary.ignored += 1;
-        continue;
-      }
-
-      const { data: reserved, error: reserveError } = await admin
-        .from("mensagens_cobranca")
-        .insert({
-          empresa_id: charge.empresa_id,
-          cobranca_id: charge.id,
-          cliente_id: charge.cliente_id,
-          tipo: type,
-          provedor: "evolution",
-          status: "pendente",
-          telefone: phone,
-        })
-        .select("id")
-        .single();
-
-      if (reserveError) {
-        if (reserveError.code === "23505") {
+        const client = first(charge.clientes);
+        const financial = first(charge.cobrancas_financeiras);
+        const phone = client?.telefone?.trim() ?? "";
+        const amount = financialBalance(financial);
+        if (!client || client.status !== "ativo" || !phone || amount <= 0) {
           summary.ignored += 1;
           continue;
         }
-        summary.errors += 1;
-        continue;
+
+        const { data: reserved, error: reserveError } = await admin
+          .from("mensagens_cobranca")
+          .insert({
+            empresa_id: charge.empresa_id,
+            cobranca_id: charge.id,
+            cliente_id: charge.cliente_id,
+            automacao_id: automation.id,
+            tipo: automation.gatilho,
+            provedor: "evolution",
+            status: "pendente",
+            telefone: phone,
+          })
+          .select("id")
+          .single();
+
+        if (reserveError) {
+          if (reserveError.code === "23505") {
+            summary.ignored += 1;
+            continue;
+          }
+          summary.errors += 1;
+          continue;
+        }
+
+        try {
+          const paymentLink = automation.incluir_pagamento ? await ensureProductionPix(admin, charge, amount) : null;
+          const message = renderBillingMessage({
+            template: automation.mensagem,
+            name: client.nome,
+            dueDate: charge.vencimento,
+            amount,
+            paymentLink,
+          });
+          const result = await sendEvolutionText(phone, message);
+          await admin
+            .from("mensagens_cobranca")
+            .update({
+              status: "enviada",
+              mensagem: message,
+              provider_message_id: result.key?.id ?? null,
+              enviada_em: new Date().toISOString(),
+              atualizado_em: new Date().toISOString(),
+            })
+            .eq("id", reserved.id);
+          summary.sent += 1;
+          remaining -= 1;
+        } catch (cause) {
+          await admin
+            .from("mensagens_cobranca")
+            .update({
+              status: "erro",
+              erro: cause instanceof Error ? cause.message.slice(0, 800) : "Falha no envio automático.",
+              atualizado_em: new Date().toISOString(),
+            })
+            .eq("id", reserved.id);
+          summary.errors += 1;
+        }
       }
 
-      try {
-        const paymentLink = await ensureProductionPix(admin, charge, amount);
-        const message = renderBillingMessage({
-          template: templateFor(type, config),
-          name: client.nome,
-          dueDate: charge.vencimento,
-          amount,
-          paymentLink,
-        });
-        const result = await sendEvolutionText(phone, message);
-        await admin
-          .from("mensagens_cobranca")
-          .update({
-            status: "enviada",
-            mensagem: message,
-            provider_message_id: result.key?.id ?? null,
-            enviada_em: new Date().toISOString(),
-            atualizado_em: new Date().toISOString(),
-          })
-          .eq("id", reserved.id);
-        summary.sent += 1;
-        remaining -= 1;
-      } catch (cause) {
-        await admin
-          .from("mensagens_cobranca")
-          .update({
-            status: "erro",
-            erro: cause instanceof Error ? cause.message.slice(0, 800) : "Falha no envio automático.",
-            atualizado_em: new Date().toISOString(),
-          })
-          .eq("id", reserved.id);
-        summary.errors += 1;
-      }
+      if (remaining <= 0) break;
     }
   }
 
