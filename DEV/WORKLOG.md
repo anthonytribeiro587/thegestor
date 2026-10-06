@@ -42,3 +42,11 @@
 - Bug corrigido: a carga inicial de Automações agora aborta após 15 segundos, apresenta erro acessível e oferece nova tentativa, evitando “Carregando automações...” preso. Lista vazia só aparece após resposta válida.
 - Verified: `npm run lint`, `npm test` (29/29), `npm run build` (26 rotas), `git diff --check` passaram.
 - Limits: Playwright e navegador indisponíveis; falta inspeção visual em Preview nos tamanhos 390, 768, 1280 e 1440 px e fluxo com usuários ADMIN/OPERATOR. Nenhuma migration criada.
+
+## 2026-10-06 — Landing pública e controles server-side
+
+- Scope: continuar finalização comercial na branch `feat/finalizacao-saas`.
+- Changed: `/` ganhou landing pública com SEO e visual de produto ilustrativo sem métricas/depoimentos inventados; login/cadastro compactos; toolbar de Clientes com popover de dia e tabela única; toolbar de Cobranças com renovação/financeiro/período e tabela ordenável.
+- Data: migration incremental `20261006180000_operational_sort_and_renewal_filter.sql` cria RPCs ordenadas sem alterar dados/RPCs legadas; renovação vem de tarefa `renovar` pendente/concluída ou de cobrança posterior da assinatura. PgTAP cobre sort, busca/paginação combinadas, renovação, tenant e operador.
+- Verified: `npm run lint` passou; `npm test` passou (29/29); `npm run build` passou (26 páginas); `git diff --check` passou.
+- Limits/next: ambiente sem `psql`, Supabase CLI funcional, Playwright ou Chromium; executar `supabase/tests/operational_sort_and_renewal.test.sql` depois de aplicar a migration em staging e validar 390/768/1024/1280/1440, menu, popovers, drawers e modal de exclusão em Chromium com ADMIN/OPERATOR.

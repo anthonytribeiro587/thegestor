@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Search } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Clock3, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ChargeActionsDrawer } from "@/components/charge-actions-drawer";
+import { FilterPopover } from "@/components/filter-popover";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -14,6 +15,8 @@ import styles from "./cobrancas.module.css";
 
 type Tab = "Precisa de ação" | "Atrasado" | "A vencer" | "Parcial" | "Pago" | "Para renovar" | "Todos";
 type PlanOption = { id: string; nome: string };
+type ChargeSort = "cliente" | "vencimento" | "status" | "valor" | "recebido" | "saldo";
+type RenewalFilter = "Todas" | "Pendente" | "Renovado" | "Não se aplica";
 
 type UiCharge = {
   id: string;
@@ -30,13 +33,14 @@ type UiCharge = {
   taskId: string | null;
   taskType: string | null;
   needsAction: boolean;
+  renewal: RenewalFilter;
 };
 
 type ChargePageResult = {
   items: Array<{
     id: string; cliente: string; descricao: string; vencimento: string; statusPagamento: string;
     pagoEm: string | null; metodoPagamento: string | null; valor: number; valorPago: number;
-    saldo: number; tarefaId: string | null; tipoTarefa: string | null; status: UiCharge["status"];
+    saldo: number; tarefaId: string | null; tipoTarefa: string | null; renovacao: RenewalFilter; status: UiCharge["status"];
     precisaAcao: boolean;
   }>;
   total: number;
@@ -57,7 +61,7 @@ function paymentMethod(methodValue: string | null, paymentStatus: string) {
 }
 
 function taskActionLabel(type: string | null) {
-  return type === "novo_cliente" ? "Ativar" : "Renovado";
+  return type === "novo_cliente" ? "Ativar cliente" : "Confirmar renovação";
 }
 
 export default function ChargesPage() {
@@ -69,6 +73,7 @@ export default function ChargesPage() {
   const [dueFrom, setDueFrom] = useState("");
   const [dueTo, setDueTo] = useState("");
   const [financialStatus, setFinancialStatus] = useState("Todas");
+  const [renewalFilter, setRenewalFilter] = useState<RenewalFilter>("Todas");
   const [plans, setPlans] = useState<PlanOption[]>([]);
   const [planError, setPlanError] = useState<string | null>(null);
   const [filtersReady, setFiltersReady] = useState(false);
@@ -76,6 +81,8 @@ export default function ChargesPage() {
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<ChargePageResult["stats"]>({ vence_hoje: 0, em_atraso: 0, renovacoes_pendentes: 0, quitadas_no_mes: 0 });
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<ChargeSort>("vencimento");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [selectedChargeId, setSelectedChargeId] = useState<string | null>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
@@ -106,8 +113,13 @@ export default function ChargesPage() {
     setDueTo(datePattern.test(dueToParam) ? dueToParam : "");
     const financial = params.get("financeiro");
     setFinancialStatus(["Com saldo", "Parcial", "Quitada", "Sem recebimento"].includes(financial ?? "") ? financial! : "Todas");
+    const renewal = params.get("renovacao");
+    setRenewalFilter(["Pendente", "Renovado", "Não se aplica"].includes(renewal ?? "") ? renewal as RenewalFilter : "Todas");
     const parsedPage = Number(params.get("page"));
     setPage(Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1);
+    const sortParam = params.get("sort");
+    if (["cliente", "vencimento", "status", "valor", "recebido", "saldo"].includes(sortParam ?? "")) setSort(sortParam as ChargeSort);
+    setDirection(params.get("dir") === "desc" ? "desc" : "asc");
     setFiltersReady(true);
   }, []);
 
@@ -129,10 +141,13 @@ export default function ChargesPage() {
     if (dueFrom) params.set("de", dueFrom);
     if (dueTo) params.set("ate", dueTo);
     if (financialStatus !== "Todas") params.set("financeiro", financialStatus);
+    if (renewalFilter !== "Todas") params.set("renovacao", renewalFilter);
     if (page > 1) params.set("page", String(page));
+    if (sort !== "vencimento") params.set("sort", sort);
+    if (direction !== "asc") params.set("dir", direction);
     const nextUrl = `${window.location.pathname}${params.size ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [filtersReady, tab, query, planId, dueDay, dueFrom, dueTo, financialStatus, page]);
+  }, [filtersReady, tab, query, planId, dueDay, dueFrom, dueTo, financialStatus, renewalFilter, page, sort, direction]);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -174,7 +189,7 @@ export default function ChargesPage() {
 
       const today = todayInSaoPaulo();
       const { firstDay } = monthBounds(today);
-      const { data, error: chargesError } = await supabase.rpc("buscar_cobrancas_paginadas_com_filtros", {
+      const { data, error: chargesError } = await supabase.rpc("buscar_cobrancas_paginadas_ordenadas", {
         p_empresa_id: membership.empresa_id,
         p_hoje: today,
         p_mes: firstDay,
@@ -185,6 +200,9 @@ export default function ChargesPage() {
         p_vencimento_de: dueFrom || null,
         p_vencimento_ate: dueTo || null,
         p_situacao_financeira: financialStatus,
+        p_renovacao: renewalFilter,
+        p_ordenar_por: sort,
+        p_ordem: direction,
         p_offset: (page - 1) * PAGE_SIZE,
         p_limite: PAGE_SIZE,
       });
@@ -205,6 +223,7 @@ export default function ChargesPage() {
         taskId: item.tarefaId,
         taskType: item.tipoTarefa,
         needsAction: item.precisaAcao,
+        renewal: item.renovacao,
       })));
       setTotal(Number(result.total ?? 0));
       setStats(result.stats ?? { vence_hoje: 0, em_atraso: 0, renovacoes_pendentes: 0, quitadas_no_mes: 0 });
@@ -215,7 +234,7 @@ export default function ChargesPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, debouncedQuery, tab, planId, dueDay, dueFrom, dueTo, financialStatus]);
+  }, [page, debouncedQuery, tab, planId, dueDay, dueFrom, dueTo, financialStatus, renewalFilter, sort, direction]);
 
   useEffect(() => {
     if (!filtersReady) return;
@@ -250,6 +269,7 @@ export default function ChargesPage() {
         paidValue: item.value,
         balance: 0,
         needsAction: true,
+        renewal: charge.taskType === "novo_cliente" ? "Não se aplica" : "Pendente",
       } : item));
       setNotice(`${charge.client}: pagamento registrado. Agora confirme a renovação quando ela for feita.`);
 
@@ -284,6 +304,7 @@ export default function ChargesPage() {
         taskId: null,
         taskType: null,
         needsAction: false,
+        renewal: charge.taskType === "renovar" ? "Renovado" : charge.renewal,
       } : item));
       setNotice(`${charge.client}: ${charge.taskType === "novo_cliente" ? "cliente ativado" : "renovação concluída"}.`);
 
@@ -296,13 +317,15 @@ export default function ChargesPage() {
   }
 
   const visible = charges;
-  const hasExtraFilters = Boolean(planId || dueDay || dueFrom || dueTo || financialStatus !== "Todas");
+  const hasExtraFilters = Boolean(planId || dueDay || dueFrom || dueTo || financialStatus !== "Todas" || renewalFilter !== "Todas");
   const hasActiveFilters = Boolean(tab !== "Precisa de ação" || query.trim() || hasExtraFilters);
   const pageStatus: Tab[] = ["Precisa de ação", "Atrasado", "A vencer", "Parcial", "Pago", "Para renovar", "Todos"];
   const clearFilters = () => {
-    setPage(1); setQuery(""); setTab("Todos"); setPlanId(""); setDueDay(""); setDueFrom(""); setDueTo(""); setFinancialStatus("Todas");
+    setPage(1); setQuery(""); setTab("Todos"); setPlanId(""); setDueDay(""); setDueFrom(""); setDueTo(""); setFinancialStatus("Todas"); setRenewalFilter("Todas");
   };
   const updateQuery = (value: string) => { setPage(1); setQuery(value); };
+  const sortBy = (column: ChargeSort) => { setPage(1); if (sort === column) setDirection((current) => current === "asc" ? "desc" : "asc"); else { setSort(column); setDirection("asc"); } };
+  const sortIcon = (column: ChargeSort) => sort !== column ? <ArrowUpDown size={12} /> : direction === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
 
   return (
     <AppShell>
@@ -327,22 +350,14 @@ export default function ChargesPage() {
               <Search size={16} />
               <input aria-label="Buscar por cliente" value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Buscar cliente..." />
             </label>
-            <label className={styles.filterField}><span>Status</span><select value={tab} onChange={(event) => { setPage(1); setTab(event.target.value as Tab); }}>{pageStatus.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-            <button className={`${styles.clearButton} button secondary small`} onClick={clearFilters} disabled={tab === "Todos" && !query && !hasExtraFilters}>Limpar filtros</button>
-          </div>
-
-          <div className={styles.quickFilters} aria-label="Filtros rápidos">
-            {["Precisa de ação", "Atrasado", "A vencer", "Pago"].map((item) => <button key={item} onClick={() => { setPage(1); setTab(item as Tab); }} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>)}
-            <details className={styles.moreFilters}>
-              <summary>Mais filtros{hasExtraFilters ? <span className={styles.activeDot} aria-label="filtros ativos" /> : null}</summary>
-              <div className={styles.extraFilters}>
-                <label className={styles.filterField}><span>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Todos os planos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
-                <label className={styles.filterField}><span>Dia de vencimento</span><select value={dueDay} onChange={(event) => { setPage(1); setDueDay(event.target.value); }}><option value="">Todos os dias</option>{Array.from({ length: 31 }, (_, index) => index + 1).map((day) => <option key={day} value={day}>Dia {day}</option>)}</select></label>
-                <label className={styles.filterField}><span>Vence a partir de</span><input type="date" value={dueFrom} onChange={(event) => { setPage(1); setDueFrom(event.target.value); }} /></label>
-                <label className={styles.filterField}><span>Vence até</span><input type="date" value={dueTo} onChange={(event) => { setPage(1); setDueTo(event.target.value); }} /></label>
-                <label className={styles.filterField}><span>Situação financeira</span><select value={financialStatus} onChange={(event) => { setPage(1); setFinancialStatus(event.target.value); }}><option>Todas</option><option value="Com saldo">Com saldo</option><option value="Parcial">Parcial</option><option value="Quitada">Quitada</option><option value="Sem recebimento">Sem recebimento</option></select></label>
-              </div>
-            </details>
+            <label className={styles.inlineFilter}><span className={styles.srOnly}>Status</span><select value={tab} onChange={(event) => { setPage(1); setTab(event.target.value as Tab); }}>{pageStatus.map((item) => <option key={item} value={item}>{item === "Precisa de ação" ? "Status: Precisa de ação" : item === "Todos" ? "Status: Todos" : item}</option>)}</select></label>
+            <label className={styles.inlineFilter}><span className={styles.srOnly}>Renovação</span><select value={renewalFilter} onChange={(event) => { setPage(1); setRenewalFilter(event.target.value as RenewalFilter); }}><option value="Todas">Renovação: Todas</option><option>Pendente</option><option>Renovado</option><option>Não se aplica</option></select></label>
+            <label className={styles.inlineFilter}><span className={styles.srOnly}>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Plano: Todos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
+            <FilterPopover label={dueFrom || dueTo ? "Vencimento: período" : "Vencimento: Todos"} active={Boolean(dueFrom || dueTo || dueDay)}>
+              <div className={styles.dateFilters}><label>De<input type="date" value={dueFrom} onChange={(event) => { setPage(1); setDueFrom(event.target.value); }} /></label><label>Até<input type="date" value={dueTo} onChange={(event) => { setPage(1); setDueTo(event.target.value); }} /></label><button onClick={() => { setPage(1); setDueFrom(""); setDueTo(""); setDueDay(""); }}>Todo período</button></div>
+            </FilterPopover>
+            <label className={styles.inlineFilter}><span className={styles.srOnly}>Financeiro</span><select value={financialStatus} onChange={(event) => { setPage(1); setFinancialStatus(event.target.value); }}><option value="Todas">Financeiro: Todas</option><option value="Com saldo">Com saldo</option><option value="Parcial">Parcial</option><option value="Quitada">Quitada</option><option value="Sem recebimento">Sem recebimento</option></select></label>
+            <button className={`${styles.clearButton} button secondary small`} onClick={clearFilters} disabled={tab === "Todos" && !query && !hasExtraFilters}>Limpar</button>
           </div>
 
           <div className={styles.resultMeta}><span>{total} cobrança(s)</span><span>Página {page} de {totalPages}</span></div>
@@ -355,22 +370,21 @@ export default function ChargesPage() {
           {!loading && !error && visible.length ? (
             <>
               <div className={styles.chargeHeader}>
-                <span>Cliente</span><span>Vencimento</span><span>Status</span><span>Financeiro</span><span style={{ textAlign: "right" }}>Ação</span>
+                <span><button onClick={() => sortBy("cliente")}>Cliente {sortIcon("cliente")}</button></span><span><button onClick={() => sortBy("vencimento")}>Vencimento {sortIcon("vencimento")}</button></span><span><button onClick={() => sortBy("status")}>Status {sortIcon("status")}</button></span><span><button onClick={() => sortBy("valor")}>Valor {sortIcon("valor")}</button></span><span><button onClick={() => sortBy("recebido")}>Recebido {sortIcon("recebido")}</button></span><span><button onClick={() => sortBy("saldo")}>Saldo {sortIcon("saldo")}</button></span><span>Ações</span>
               </div>
               {visible.map((charge) => (
                 <div key={charge.id} className={`${styles.chargeRow} ${charge.status === "Atrasado" ? styles.chargeLate : ""} ${charge.status === "Parcial" ? styles.chargePartial : ""}`}>
-                  <div className={styles.clientCell}><b>{charge.client}</b><small>{charge.description}</small></div>
-                  <span>{charge.dueDate}</span>
-                  <div className={styles.statusCell}>
+                  <div className={styles.clientCell} data-label="Cliente"><b>{charge.client}</b><small>{charge.description}</small></div>
+                  <span data-label="Vencimento">{charge.dueDate}</span>
+                  <div className={styles.statusCell} data-label="Status">
                     {charge.status === "Parcial" ? <span className="status-badge status-pendente">Parcial</span> : <StatusBadge status={charge.status} />}
+                    {charge.renewal === "Pendente" ? <span className="status-badge status-pendente">Renovação pendente</span> : charge.renewal === "Renovado" ? <span className="status-badge status-pago">Renovado</span> : null}
                     <small>{charge.taskId ? "Pagamento confirmado · falta renovar" : charge.paymentMethod}</small>
                   </div>
-                  <div className={styles.financeCell}>
-                    <div className={styles.financeItem}><span>Valor</span><strong>{currency.format(charge.value)}</strong></div>
-                    <div className={`${styles.financeItem} ${styles.financeReceived}`}><span>Recebido</span><strong>{currency.format(charge.paidValue)}</strong></div>
-                    <div className={`${styles.financeItem} ${styles.financeBalance}`}><span>Saldo</span><strong>{currency.format(charge.balance)}</strong></div>
-                  </div>
-                  <div className={styles.actionCell}>
+                  <div className={styles.financeItem} data-label="Valor"><strong>{currency.format(charge.value)}</strong></div>
+                  <div className={`${styles.financeItem} ${styles.financeReceived}`} data-label="Recebido"><strong>{currency.format(charge.paidValue)}</strong></div>
+                  <div className={`${styles.financeItem} ${styles.financeBalance}`} data-label="Saldo"><strong>{currency.format(charge.balance)}</strong></div>
+                  <div className={styles.actionCell} data-label="Ações">
                     {charge.balance > 0 ? (
                       <button className="button primary small" disabled={Boolean(quickPayingId || savingTaskId)} onClick={() => void quickPay(charge)}>
                         {quickPayingId === charge.id ? "Salvando..." : "Marcar pago"}

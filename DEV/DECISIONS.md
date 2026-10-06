@@ -33,3 +33,12 @@
 - Consequências: clientes importados/testes sem pagamentos confirmados podem ser removidos; tentativas não pagas relacionadas também são removidas; clientes com pagamento recebem orientação para cancelamento. Auditoria conserva nome, contagens e origem.
 - Rollback: migration é aditiva; rollback operacional pode revogar e remover somente a função `public.excluir_cliente(uuid, uuid, text)`. Exclusões já efetivadas não são reversíveis; aplicar inicialmente em staging com os testes de `supabase/tests/excluir_cliente.test.sql`.
 - Verificação: suíte SQL pgTAP cobre ADMIN, OPERATOR, tenant, histórico pago, dependências, auditoria e repetição; lint/testes/build do app. Execução pgTAP depende de Supabase local/staging.
+
+## 2026-10-06 — Landing pública, ordenação e renovação derivada
+
+- Status: aceito para esta branch
+- Contexto: `/` ainda redirecionava para login; as listas de clientes e cobranças precisavam de ordenação server-side e melhor distinção de renovações concluídas.
+- Decisão: manter `/login`, `/cadastro` e middleware existentes; publicar landing estática na raiz; adicionar RPCs paginadas com whitelist explícita de sort/direction; derivar renovação de tarefas `renovar` e de cobranças posteriores da mesma assinatura.
+- Alternativas: ordenar no navegador (carregaria páginas incompletas e resultados inconsistentes); adicionar coluna duplicada de estado (cria sincronização e migração de dados); substituir as RPCs atuais e quebrar clientes antigos.
+- Consequências: migration aditiva `20261006180000_operational_sort_and_renewal_filter.sql`, sem alteração de dados nem das RPCs antigas; `SECURITY INVOKER`, validação ADMIN/tenant e grants autenticados preservados; UI atual passa a chamar as novas RPCs.
+- Verificação: lint, Vitest, build e diff check; PgTAP e inspeção visual ainda dependem de PostgreSQL/Supabase local ou staging e Chromium/Preview.

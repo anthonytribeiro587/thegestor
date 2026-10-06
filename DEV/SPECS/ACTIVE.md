@@ -6,11 +6,12 @@ Transformar o TheGestor de uma aplicação operacional funcional em um SaaS repl
 
 ## Current Focus
 
-Consolidar a base do produto e concluir o acabamento de UX/UI nas telas operacionais, preservando identidade, densidade, responsividade e fluxos existentes. Exclusão segura de clientes já está implementada; a validação visual em Preview segue pendente.
+Concluir a landing pública de vendas e o acabamento de login/cadastro, clientes e cobranças, preservando identidade, isolamento multiempresa, fluxos existentes e paginação server-side. A validação da migration em PostgreSQL e a revisão visual em Chromium/Preview seguem pendentes.
 
 ## In Scope
 
-- UX/UI e fluxos essenciais;
+- Landing pública, SEO, UX/UI e fluxos essenciais;
+- Filtros, ordenação server-side e estado de renovação derivado de tarefas/ciclos;
 - consistência visual, densidade, acessibilidade básica e responsividade das telas principais;
 - CRUD completo de clientes;
 - exclusão definitiva de clientes sem histórico financeiro, com RPC ADMIN-only, auditoria e preservação/cancelamento dos clientes com recebimentos;
@@ -31,6 +32,7 @@ Consolidar a base do produto e concluir o acabamento de UX/UI nas telas operacio
 ## Acceptance
 
 - fluxo implementado e verificável;
+- landing `/` pública; login/cadastro preservados; filtros e ordenação persistidos na URL;
 - cliente com histórico financeiro permanece preservado e pode ser cancelado;
 - exclusão sem recebimentos confirma tenant/ADMIN, limpa dependências e mantém auditoria;
 - isolamento multiempresa preservado;

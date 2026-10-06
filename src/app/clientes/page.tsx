@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Eye, Pencil, Plus, Search, Upload, UserRoundCheck, WalletCards } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Eye, Pencil, Plus, Search, Upload, UserRoundCheck, WalletCards } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ClientActionsDrawer } from "@/components/client-actions-drawer";
 import { ClientDrawer } from "@/components/client-drawer";
 import { ClientImportDrawer } from "@/components/client-import-drawer";
+import { FilterPopover } from "@/components/filter-popover";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -20,6 +21,7 @@ type CreditFilter = "Todos" | "Com créditos previstos" | "Sem créditos previst
 type PlanOption = { id: string; nome: string };
 type ActionMode = "view" | "edit";
 type DayFilter = "all" | number;
+type ClientSort = "cliente" | "plano" | "vencimento" | "creditos" | "ciclo" | "status";
 
 type UiClient = {
   id: string;
@@ -71,10 +73,10 @@ export default function ClientsPage() {
   const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [clients, setClients] = useState<UiClient[]>([]);
   const [total, setTotal] = useState(0);
-  const [filteredTotal, setFilteredTotal] = useState(0);
   const [stats, setStats] = useState<ClientPageResult["stats"]>({ ativos: 0, vencidos: 0, creditos_utilizados: 0, creditos_previstos: 0 });
-  const [dayCounts, setDayCounts] = useState<Record<string, number>>({});
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<ClientSort>("vencimento");
+  const [direction, setDirection] = useState<"asc" | "desc">("asc");
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +99,9 @@ export default function ClientsPage() {
     setCreditFilter(credits === "Com créditos previstos" || credits === "Sem créditos previstos" ? credits : "Todos");
     const parsedPage = Number(params.get("page"));
     setPage(Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1);
+    const sortParam = params.get("sort");
+    if (["cliente", "plano", "vencimento", "creditos", "ciclo", "status"].includes(sortParam ?? "")) setSort(sortParam as ClientSort);
+    setDirection(params.get("dir") === "desc" ? "desc" : "asc");
     setFiltersReady(true);
   }, []);
 
@@ -111,9 +116,11 @@ export default function ClientsPage() {
     if (overdueFilter !== "Todos") params.set("atraso", overdueFilter);
     if (creditFilter !== "Todos") params.set("creditos", creditFilter);
     if (page > 1) params.set("page", String(page));
+    if (sort !== "vencimento") params.set("sort", sort);
+    if (direction !== "asc") params.set("dir", direction);
     const nextUrl = `${window.location.pathname}${params.size ? `?${params}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [filtersReady, filter, statusFilter, query, planId, dayFilter, overdueFilter, creditFilter, page]);
+  }, [filtersReady, filter, statusFilter, query, planId, dayFilter, overdueFilter, creditFilter, page, sort, direction]);
 
   useEffect(() => {
     if (!empresaId) return;
@@ -143,7 +150,7 @@ export default function ClientsPage() {
       setEmpresaId(membership.empresa_id);
 
       const today = todayInSaoPaulo();
-      const { data, error: clientsError } = await supabase.rpc("buscar_clientes_paginados_com_filtros", {
+      const { data, error: clientsError } = await supabase.rpc("buscar_clientes_paginados_ordenados", {
         p_empresa_id: membership.empresa_id,
         p_hoje: today,
         p_busca: query.trim(),
@@ -153,6 +160,8 @@ export default function ClientsPage() {
         p_com_atraso: overdueFilter === "Todos" ? null : overdueFilter === "Sim",
         p_creditos_previstos: creditFilter,
         p_dia: dayFilter === "all" ? null : dayFilter,
+        p_ordenar_por: sort,
+        p_ordem: direction,
         p_offset: (targetPage - 1) * PAGE_SIZE,
         p_limite: PAGE_SIZE,
       });
@@ -175,16 +184,14 @@ export default function ClientsPage() {
         cycleNeedsReview: item.cicloRevisao,
       })));
       setTotal(Number(result.total ?? 0));
-      setFilteredTotal(Number(result.filteredTotal ?? 0));
       setStats(result.stats ?? { ativos: 0, vencidos: 0, creditos_utilizados: 0, creditos_previstos: 0 });
-      setDayCounts(result.dayCounts ?? {});
       setPage(targetPage);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar os clientes.");
     } finally {
       setLoading(false);
     }
-  }, [query, filter, statusFilter, dayFilter, planId, overdueFilter, creditFilter]);
+  }, [query, filter, statusFilter, dayFilter, planId, overdueFilter, creditFilter, sort, direction]);
 
   useEffect(() => {
     if (!filtersReady) return;
@@ -220,20 +227,17 @@ export default function ClientsPage() {
 
   const visibleClients = clients;
 
-  const groups = useMemo(() => {
-    const grouped = new Map<number, UiClient[]>();
-    visibleClients.forEach((client) => {
-      const day = client.dueDay ?? 0;
-      grouped.set(day, [...(grouped.get(day) ?? []), client]);
-    });
-    return [...grouped.entries()].sort(([a], [b]) => a - b);
-  }, [visibleClients]);
-
   const hasExtraFilters = Boolean(planId || overdueFilter !== "Todos" || creditFilter !== "Todos");
   const hasActiveFilters = Boolean(query.trim() || filter !== "Todos" || statusFilter !== "Todos" || hasExtraFilters || dayFilter !== "all");
   const clearFilters = () => {
     setPage(1); setQuery(""); setFilter("Todos"); setStatusFilter("Todos"); setPlanId(""); setDayFilter("all"); setOverdueFilter("Todos"); setCreditFilter("Todos");
   };
+  const sortBy = (column: ClientSort) => {
+    setPage(1);
+    if (sort === column) setDirection((current) => current === "asc" ? "desc" : "asc");
+    else { setSort(column); setDirection("asc"); }
+  };
+  const sortIcon = (column: ClientSort) => sort !== column ? <ArrowUpDown size={12} /> : direction === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
 
   return (
     <AppShell>
@@ -251,36 +255,17 @@ export default function ClientsPage() {
         <StatCard title="Créditos previstos" value={String(stats.creditos_previstos)} helper="Ainda devem ser consumidos" icon={WalletCards} tone="slate" />
       </section>
 
-      <section className={styles.dayPanel}>
-        <div className={styles.dayPanelHead}>
-          <div><h2>Vencimentos por dia</h2></div>
-          <div className={styles.clientFilters}>
-            <label className={styles.filterField}><span>Status</span><select value={statusFilter} onChange={(event) => { setPage(1); setFilter("Todos"); setStatusFilter(event.target.value as ClientStatusFilter); }}><option>Todos</option><option>Ativos</option><option>Cancelados</option></select></label>
-            <button className={`filter-chip ${filter === "Vencidos" ? "active" : ""}`} onClick={() => { setPage(1); setFilter(filter === "Vencidos" ? "Todos" : "Vencidos"); }}>Com pagamento vencido</button>
-            <button className={`filter-chip ${filter === "Revisar ciclos" ? "active" : ""}`} onClick={() => { setPage(1); setFilter(filter === "Revisar ciclos" ? "Todos" : "Revisar ciclos"); }}>Revisar ciclo</button>
-            <details className={styles.moreFilters}><summary>Mais filtros{hasExtraFilters ? <span className={styles.activeDot} aria-label="filtros ativos" /> : null}</summary><div className={styles.extraFilters}>
-              <label className={styles.filterField}><span>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Todos os planos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
-              <label className={styles.filterField}><span>Pagamento vencido</span><select value={overdueFilter} onChange={(event) => { setPage(1); setOverdueFilter(event.target.value); }}><option>Todos</option><option>Sim</option><option>Não</option></select></label>
-              <label className={styles.filterField}><span>Créditos previstos</span><select value={creditFilter} onChange={(event) => { setPage(1); setCreditFilter(event.target.value as CreditFilter); }}><option>Todos</option><option>Com créditos previstos</option><option>Sem créditos previstos</option></select></label>
-            </div></details>
-            <button className="button secondary small" onClick={clearFilters} disabled={statusFilter === "Todos" && filter === "Todos" && !query && !hasExtraFilters && dayFilter === "all"}>Limpar filtros</button>
-            {planError ? <span className={styles.filterError} role="status">{planError}</span> : null}
-          </div>
-        </div>
-        <div className={styles.dayNav} aria-label="Filtrar por dia de vencimento">
-          <button className={`${styles.dayButton} ${styles.allButton} ${dayFilter === "all" ? styles.dayButtonActive : ""}`} onClick={() => { setPage(1); setDayFilter("all"); }}><b>Todos</b><small>{filteredTotal}</small></button>
-          {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
-            const count = Number(dayCounts[String(day)] ?? 0);
-            return <button key={day} disabled={!count} className={`${styles.dayButton} ${dayFilter === day ? styles.dayButtonActive : ""} ${!count ? styles.dayButtonEmpty : ""}`} onClick={() => { setPage(1); setDayFilter(day); }}><b>{day}</b><small>{count ? `${count} cli.` : "—"}</small></button>;
-          })}
-        </div>
-      </section>
-
-      <section className="card" style={{ marginBottom: 14 }}>
-        <div className="toolbar">
-          <label className="toolbar-search"><Search size={16} /><input aria-label="Buscar por nome, telefone ou e-mail" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." /></label>
-          <span style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 11 }}>{total} cliente(s) · página {page} de {totalPages}</span>
-        </div>
+      <section className={styles.toolbar} aria-label="Filtros de clientes">
+        <label className={styles.search}><Search size={15} /><input aria-label="Buscar por nome, telefone ou e-mail" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." /></label>
+        <label className={styles.inlineFilter}><span className={styles.srOnly}>Status</span><select value={filter === "Vencidos" ? "Vencidos" : filter === "Revisar ciclos" ? "Revisar ciclos" : statusFilter} onChange={(event) => { setPage(1); if (event.target.value === "Vencidos" || event.target.value === "Revisar ciclos") { setStatusFilter("Todos"); setFilter(event.target.value); } else { setFilter("Todos"); setStatusFilter(event.target.value as ClientStatusFilter); } }}><option value="Todos">Status: Todos</option><option value="Ativos">Ativos</option><option value="Cancelados">Cancelados</option><option value="Vencidos">Vencidos</option><option value="Revisar ciclos">Revisar ciclo</option></select></label>
+        <label className={styles.inlineFilter}><span className={styles.srOnly}>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Plano: Todos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
+        <FilterPopover label={dayFilter === "all" ? "Vencimento: Todos" : `Vencimento: dia ${dayFilter}`} active={dayFilter !== "all"}>
+          <div className={styles.dayOptions}><button className={dayFilter === "all" ? styles.daySelected : ""} onClick={() => { setPage(1); setDayFilter("all"); }}>Todos</button>{Array.from({ length: 31 }, (_, index) => index + 1).map((day) => <button key={day} className={dayFilter === day ? styles.daySelected : ""} onClick={() => { setPage(1); setDayFilter(day); }}>{day}</button>)}</div>
+        </FilterPopover>
+        <label className={styles.inlineFilter}><span className={styles.srOnly}>Créditos</span><select value={creditFilter} onChange={(event) => { setPage(1); setCreditFilter(event.target.value as CreditFilter); }}><option>Todos</option><option>Com créditos previstos</option><option>Sem créditos previstos</option></select></label>
+        <button className="button secondary small" onClick={clearFilters} disabled={statusFilter === "Todos" && filter === "Todos" && !query && !hasExtraFilters && dayFilter === "all"}>Limpar</button>
+        <span className={styles.resultMeta}>{total} cliente(s) · página {page} de {totalPages}</span>
+        {planError ? <span className={styles.filterError} role="status">{planError}</span> : null}
       </section>
 
       {error ? <div className="card"><div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div></div> : null}
@@ -288,30 +273,18 @@ export default function ClientsPage() {
 
       {!loading && !error ? (
         <div className={styles.listPanel}>
-          {groups.length ? groups.map(([day, group]) => {
-            const groupUsed = group.reduce((sum, client) => sum + client.creditsUsed, 0);
-            const groupExpected = group.reduce((sum, client) => sum + client.creditsExpected, 0);
-            return (
-              <section key={day} className={styles.dayGroup}>
-                <div className={styles.dayGroupHead}>
-                  <div className={styles.dayNumber}>{day || "—"}</div>
-                  <div className={styles.dayTitle}><b>{day ? `Vencimento dia ${day}` : "Sem vencimento definido"}</b><small>{day ? Number(dayCounts[String(day)] ?? group.length) : group.length} cliente(s) neste dia</small></div>
-                  <div className={styles.dayCreditSummary}><span className={styles.summaryPill}>Usados <strong>{groupUsed}</strong></span><span className={styles.summaryPill}>Previstos <strong>{groupExpected}</strong></span></div>
-                </div>
-                <div className={styles.clientHeader}><span>Cliente</span><span>Plano</span><span>Créditos no mês</span><span>Ciclo</span><span>Status</span><span style={{ textAlign: "right" }}>Ações</span></div>
-                {group.map((client) => (
-                  <div className={styles.clientRow} key={client.id}>
-                    <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>{client.plan} · Pagamento: {client.lastPayment}</small></div></div>
-                    <span>{client.plan}</span>
-                    <div className={styles.credits}><span className={styles.creditUsed}>{client.creditsUsed} usado(s)</span><span className={styles.creditExpected}>{client.creditsExpected} previsto(s)</span></div>
-                    <span title={client.cycleNeedsReview ? "Ciclo concluído e pago. Confirme se o cliente quer renovar mensal ou trimestral." : undefined} style={client.cycleNeedsReview ? { color: "var(--orange)", fontWeight: 700 } : undefined}>{client.cycleNeedsReview ? "Renovar · " : ""}{client.cycle}</span>
-                    <StatusBadge status={client.status} />
-                    <div className={styles.actions}><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div>
-                  </div>
-                ))}
-              </section>
-            );
-          }) : <div className={styles.dayGroup}><div className={styles.empty}>{hasActiveFilters ? "Nenhum cliente encontrado para estes filtros." : "Nenhum cliente cadastrado ainda."}</div></div>}
+          {visibleClients.length ? <section className={styles.dayGroup}>
+            <div className={styles.clientHeader}><span><button onClick={() => sortBy("cliente")}>Cliente {sortIcon("cliente")}</button></span><span><button onClick={() => sortBy("plano")}>Plano {sortIcon("plano")}</button></span><span><button onClick={() => sortBy("vencimento")}>Vencimento {sortIcon("vencimento")}</button></span><span><button onClick={() => sortBy("creditos")}>Créditos {sortIcon("creditos")}</button></span><span><button onClick={() => sortBy("ciclo")}>Ciclo {sortIcon("ciclo")}</button></span><span><button onClick={() => sortBy("status")}>Status {sortIcon("status")}</button></span><span>Ações</span></div>
+            {visibleClients.map((client) => <div className={styles.clientRow} key={client.id}>
+              <div className={styles.clientMain} data-label="Cliente"><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>{client.phone ?? client.email ?? ""}</small></div></div>
+              <span data-label="Plano">{client.plan}</span>
+              <span data-label="Vencimento">{client.dueDay ? `Dia ${client.dueDay}` : "—"}</span>
+              <div className={styles.credits} data-label="Créditos"><span className={styles.creditCycle}>{client.credits} por ciclo</span><span className={styles.creditUsed}>{client.creditsUsed} usados</span><span className={styles.creditExpected}>{client.creditsExpected} previstos</span></div>
+              <span data-label="Ciclo" title={client.cycleNeedsReview ? "Ciclo concluído e pago. Confirme se o cliente quer renovar mensal ou trimestral." : undefined}>{client.cycleNeedsReview ? <><span className={styles.renewalPending}>Renovação pendente</span> </> : null}{client.cycle}</span>
+              <span data-label="Status"><StatusBadge status={client.status} /></span>
+              <div className={styles.actions} data-label="Ações"><button className="square-action" aria-label={`Visualizar ${client.name}`} title="Visualizar ficha" onClick={() => openClient(client.id, "view")}><Eye size={14} /></button><button className="square-action" aria-label={`Editar ${client.name}`} title="Editar cliente" onClick={() => openClient(client.id, "edit")}><Pencil size={14} /></button></div>
+            </div>)}
+          </section> : <div className={styles.dayGroup}><div className={styles.empty}>{hasActiveFilters ? "Nenhum cliente encontrado para estes filtros." : "Nenhum cliente cadastrado ainda."}</div></div>}
           {total > 0 ? <div className={styles.pagination}>
             <button className="button secondary small" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button>
             <span>Página {page} de {totalPages}</span>

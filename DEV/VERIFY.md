@@ -65,6 +65,28 @@ O build inicial de baseline falhou ao prerenderizar `/dashboard` sem credenciais
 
 Aplicar `20261006160000_operational_filters.sql` em staging e revisar os filtros e larguras nas telas Clientes/Cobranças em 390, 768, 1280 e 1440 px, com sessão ADMIN e checagem de acesso OPERATOR.
 
+## Landing pública, filtros, renovação e ordenação — 2026-10-06
+
+### Checks executados
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; compilou e gerou 26 rotas.
+- `git diff --check` — passou.
+- Smoke HTTP pós-build: `/`, `/login` e `/cadastro` retornaram HTTP 200; landing serviu headline, OG title e CTA.
+- Migration incremental criada: `20261006180000_operational_sort_and_renewal_filter.sql`; sem alteração de dados, RLS ou RPCs legadas.
+- PgTAP criado para ordenação A-Z/Z-A, vencimento crescente/decrescente, valor numérico, renovação pendente/concluída, busca+sort+paginação, isolamento tenant e restrição OPERATOR.
+
+### Verificações não disponíveis neste ambiente
+
+- PgTAP e migration não foram executados: `psql` e Supabase CLI funcional não estão disponíveis. A tentativa via `npx supabase@latest` falhou porque o registry não encontrou a versão `supabase@2.120.0`.
+- Visual QA executado contra `http://localhost:3030`, mas o harness retornou `ENVIRONMENT_LIMITATION` (`playwright-not-installed`); não há Chromium instalado.
+- Não foi possível inspecionar Preview nos tamanhos solicitados nem executar com sessões ADMIN/OPERATOR.
+
+### Próxima validação
+
+Aplicar a migration nova em staging, executar `supabase/tests/operational_sort_and_renewal.test.sql` e inspecionar landing, login, cadastro, filtros/popovers, tabelas, drawers e exclusão em Chromium nos tamanhos 390, 768, 1024, 1280 e 1440 px. Verificar ações e separação financeira com ADMIN e OPERATOR.
+
 ## Acabamento final UX/UI — 2026-10-06
 
 ### Checks executados
