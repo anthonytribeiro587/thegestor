@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-06 — Tabelas compactas no mobile
+
+- Scope: substituir cards altos por tabelas operacionais compactas em Clientes e Cobranças até 768px, preservando desktop e interações existentes.
+- Changed: scroll horizontal contido, dica de deslize, coluna Cliente sticky e alinhada no header; linhas compactas; plano/créditos/ciclo agrupados; finanças agrupadas; ações mobile compactas com nomes acessíveis. Sem alteração de RPCs, Supabase, dados ou migrations.
+- Verified: lint passou; Vitest 29/29; build passou e gerou 27 rotas; `git diff --check` passou.
+- Limits: o middleware redirecionou para `/login` durante a tentativa Chromium com sessão Supabase sintética. As capturas gravadas nesse roteiro mostram login e não são evidência das tabelas; QA autenticado, scroll/sticky/interações visuais e screenshots finais seguem pendentes com sessão QA.
+
 ## 2026-10-06 — Corrige exclusão de importações de valor zero
 
 - Scope: corrigir a regra de histórico financeiro em `20261006170000_secure_client_deletion.sql` antes de a migration ser aplicada.

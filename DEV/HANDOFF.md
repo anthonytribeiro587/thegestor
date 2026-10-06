@@ -5,7 +5,7 @@
 - Updated: 2026-10-06
 - Branch: `feat/finalizacao-saas`
 - Project: TheGestor
-- State: revisão mobile-first de todo o frontend implementada nesta branch; QA público Chromium passou nos cinco viewports. QA autenticado ADMIN/OPERATOR e migrations/PgTAP em staging continuam pendentes.
+- State: revisão mobile-first de todo o frontend implementada nesta branch; Clientes e Cobranças agora usam tabelas compactas com rolagem horizontal interna até 768px. QA público Chromium passou nos cinco viewports; QA operacional autenticado e migrations/PgTAP em staging continuam pendentes.
 - Orchestration: Orquestrador Maestro V1 beta
 - Read order: `INDEX.md` -> `HANDOFF.md` -> `CONTEXT.md` -> `SPECS/ACTIVE.md`
 - Verification source: `VERIFY.md`
@@ -26,9 +26,9 @@
 - Billing, renovações, créditos, WhatsApp/Evolution e Mercado Pago: implementação existente auditada; a branch acrescenta reservas idempotentes para envio e criação de Pix.
 - Integrações e Automações: removida configuração duplicada da Evolution na tela de Integrações.
 - UX/UI: acabamento final preserva o design navy/azul, inclui foco visível e alvos mobile, simplifica status de integrações e reduz duplicação em Configurações.
-- Mobile: desktop preservado acima de 768px; até 768px há header compacto, drawer lateral, KPIs 2 colunas, folhas de filtro/ordenação, cartões operacionais, ajustes responsivos por tela e formulários/drawers em largura total.
+- Mobile: desktop preservado acima de 768px; até 768px há header compacto, drawer lateral, KPIs 2 colunas, folhas de filtro/ordenação, tabelas densas em Clientes/Cobranças com scroll isolado e sticky na coluna Cliente, além de ajustes responsivos por tela e formulários/drawers em largura total.
 - QA mobile: `/`, `/login`, `/cadastro` passaram em 390x844, 430x932, 768x1024, 1280x800 e 1440x900; sem overflow/elementos fora do viewport/erros. Evidência em `.qa/screenshots/mobile-review/` e `DEV/QA-FINAL.md`.
-- QA operacional: menu/filtros/vencimento/ordenação foram exercitados em 390px sem dados. Sem sessão nem variáveis Supabase, drawers com dados, ações e separação ADMIN/OPERATOR não foram validados.
+- QA operacional: menus/filtros/vencimento/ordenação foram exercitados em telas anteriores. Nesta revisão, lint/test/build passaram; a captura Chromium autenticada foi bloqueada pelo middleware ao tentar fornecer uma sessão sintética. Sem sessão QA, drawers com dados, ações e separação ADMIN/OPERATOR não foram validados; conferir as tabelas em 390/430/768px numa conta QA.
 - Automações: requisição inicial limitada a 15 segundos com estado de erro e nova tentativa; mensagem de carregamento não fica presa indefinidamente.
 - Cobranças: ações rápidas comunicam o estado de envio e ficam desabilitadas durante gravação concorrente.
 

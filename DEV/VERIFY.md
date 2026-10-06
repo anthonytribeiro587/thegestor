@@ -1,5 +1,15 @@
 # Verify
 
+## Tabelas mobile em Clientes e Cobranças — 2026-10-06
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; 27 rotas geradas. Avisos de cache do webpack sobre strings serializadas grandes.
+- `git diff --check` — passou.
+- Chromium local 390/430: tentativa com sessão Supabase sintética foi redirecionada a `/login` pelo middleware; sem sessão QA, não foi possível validar visualmente as tabelas, scroll/sticky, filtros, ordenação, drawers ou paginação. As imagens `clientes-390.png`, `clientes-430.png`, `cobrancas-390.png`, `cobrancas-430.png` da tentativa são telas de login e não devem ser tratadas como screenshots das listas.
+- Sem migration ou alteração de RPC/regra financeira. Resultado estático do CSS prevê Clientes ~658px e Cobranças ~671px de largura interna; documento não deve rolar horizontalmente. Confirmar métricas no Chromium após obter sessão QA.
+- Pendente: capturar as quatro telas operacionais, confirmar linhas por viewport, arraste horizontal, sticky, ordenação, filtros, detalhes/edição e paginação em dados QA isolados.
+
 ## Auditoria QA final em Chromium — 2026-10-06
 
 - Preview Vercel da branch/commit `feat/finalizacao-saas` / `c572facea238b8f48fc83e8a2d389b92fbb82480` acessado com Chromium for Testing 153.0.8010.12 e Playwright 1.63.0.

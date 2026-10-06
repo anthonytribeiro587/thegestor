@@ -48,3 +48,41 @@
   .empty{padding:20px 14px;font-size:14px}
   .filterError{font-size:13px}
 }
+
+.financeGroup,.mobileHeading,.mobileActionLabel,.mobileEye{display:none}
+.tableScroll{position:relative}
+.tableHint{display:none}
+@media(max-width:768px){
+  .panelHead{min-height:42px;padding:8px 12px;flex-direction:row;align-items:center}
+  .panelHead h2{font-size:15px}.panelHead span,.panelHead a{font-size:11px}
+  .toolbar{padding:8px;gap:7px}.search,.filterSheet>summary,.sortSheet>summary{min-height:42px}
+  .resultMeta{padding:5px 10px;font-size:11px}
+  .chargeHeader,.chargeRow{width:100%;min-width:0;grid-template-columns:190px 68px 112px 145px 0 0 96px;gap:7px;padding-inline:9px}
+  .tableScroll{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#d6deea transparent}
+  .tableScroll:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+  .tableHint{position:sticky;left:0;z-index:8;display:flex;align-items:center;justify-content:flex-end;gap:5px;width:100%;height:22px;padding:0 10px;background:linear-gradient(90deg,#fff0 58%,#fff 77%);color:#64748b;font-size:10px;pointer-events:none}
+  .tableHint span{font-size:17px;color:var(--blue);line-height:1}
+  .chargeHeader{display:grid;position:sticky;top:0;z-index:5;min-height:34px;padding-top:4px;padding-bottom:4px;font-size:11px}
+  .chargeHeader>span:first-child{position:sticky;left:0;z-index:7;margin-left:-9px;padding-left:9px;background:#fbfcff;box-shadow:5px 0 8px -8px rgb(14 39 72 / 50%)}
+  .chargeHeader>span:nth-child(5),.chargeHeader>span:nth-child(6),.chargeRow>[data-label="Valor"],.chargeRow>[data-label="Recebido"],.chargeRow>[data-label="Saldo"]{display:none}
+  .chargeHeader>span:nth-child(4){grid-column:4}
+  .chargeRow{min-height:62px;margin:0;border:0;border-radius:0;border-bottom:1px solid #edf1f6;box-shadow:none;grid-template-rows:minmax(48px,auto);font-size:12px;padding-top:5px;padding-bottom:5px}
+  .clientCell{grid-column:1;position:sticky;left:0;z-index:3;align-self:stretch;display:flex;flex-direction:column;justify-content:center;margin-left:-9px;padding:4px 7px 4px 9px;background:#fff;box-shadow:5px 0 8px -8px rgb(14 39 72 / 50%)}
+  .chargeRow:hover .clientCell{background:#fbfcff}
+  .clientCell b{font-size:14px;white-space:nowrap}
+  .clientCell small{font-size:10px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chargeRow>[data-label="Vencimento"]{grid-column:2;grid-row:1;align-self:center;text-align:center;font-size:12px;white-space:nowrap}
+  .chargeRow>[data-label="Status"]{grid-column:3;grid-row:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:3px;min-width:0}
+  .chargeRow>[data-label="Status"]::before,.chargeRow>[data-label="Financeiro"]::before{display:none}
+  .statusCell :global(.status-badge){min-height:21px;padding:0 6px;font-size:10px;white-space:nowrap}
+  .statusCell small{display:none}
+  .chargeRow>[data-label="Financeiro"]{grid-column:4;grid-row:1;display:grid;align-content:center;gap:1px;min-width:0}
+  .financeGroup strong,.financeGroup small{font-size:11px;line-height:1.15;white-space:nowrap}
+  .financeGroup strong{font-weight:700}.financeGroup small{display:block;color:#54705f}
+  .financeGroup .financeBalance{color:#946416}
+  .actionCell{grid-column:7;grid-row:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:0;border:0}
+  .actionCell .button.small{min-height:40px;min-width:40px;padding:0 7px;font-size:11px}
+  .mobileActionLabel{display:inline}.desktopActionLabel,.desktopDetails{display:none}
+  .mobileEye{display:block}.actionCell .mobileDetails{width:40px;min-width:40px;min-height:40px;display:grid;place-items:center;padding:0}
+  .pagination{padding:10px 8px;font-size:12px}.pagination .button{min-width:88px;min-height:36px}
+}

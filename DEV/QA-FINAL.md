@@ -90,3 +90,28 @@
 - Nenhuma migration, regra financeira, API, RPC, dado ou configuração de papel foi alterada.
 
 **Conclusão MOBILE:** código e QA público aprovados; QA autenticado permanece WARN e é necessário antes da aprovação global. Nenhum merge na `main`.
+
+## Tabelas operacionais compactas em mobile — 2026-10-06
+
+### Alteração
+
+- Clientes e Cobranças usam linhas compactas até 768px dentro de wrappers com rolagem horizontal própria; o desktop mantém a apresentação existente.
+- Clientes agrupam plano sob o nome e ciclo junto aos créditos; Cobranças agrupam valor, recebido e saldo na coluna Financeiro.
+- Cabeçalho e coluna Cliente usam sticky; busca, folhas de filtros/ordenação, paginação, ordenação server-side e handlers existentes permanecem no lugar.
+- Largura intrínseca definida: aproximadamente 658px em Clientes e 671px em Cobranças. Largura do documento deve permanecer no viewport; o wrapper da tabela pode rolar internamente.
+- Ações mobile usam botões compactos e ícone de detalhes com rótulo acessível. Nenhuma migration, RPC, dado ou regra financeira foi alterada.
+
+### Gates de código
+
+- `npm run lint` — PASS.
+- `npm test` — PASS, 29/29.
+- `npm run build` — PASS, 27 rotas.
+- `git diff --check` — PASS.
+
+### QA visual pendente
+
+- Chromium foi iniciado contra build local, mas o middleware redirecionou as rotas protegidas para `/login` ao fornecer sessão sintética. Sem uma sessão QA válida, não foi possível obter screenshots reais das tabelas nem exercitar scroll/sticky, filtros, ordenação, drawers, ações e paginação.
+- As capturas `clientes-390.png`, `clientes-430.png`, `cobrancas-390.png`, `cobrancas-430.png` produzidas nessa tentativa mostram a tela de login; não são evidência visual das listagens.
+- Com login QA isolado, repetir em 390x844, 430x932 e 768x1024; registrar a contagem de linhas por viewport e screenshots `clientes-390.png`, `cobrancas-390.png`, `clientes-430.png`, `cobrancas-430.png`. Validar `document.documentElement.scrollWidth <= window.innerWidth` e scroll interno no wrapper.
+
+**Conclusão desta revisão:** gates de código aprovados; comparação visual solicitada e QA autenticado das telas operacionais continuam pendentes. Sem merge na `main` e sem push.

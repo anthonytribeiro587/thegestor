@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Clock3, Search } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, Clock3, Eye, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ChargeActionsDrawer } from "@/components/charge-actions-drawer";
 import { FilterPopover } from "@/components/filter-popover";
@@ -388,36 +388,40 @@ export default function ChargesPage() {
 
           {!loading && !error && visible.length ? (
             <>
-              <div className={styles.chargeHeader}>
-                <span><button onClick={() => sortBy("cliente")}>Cliente {sortIcon("cliente")}</button></span><span><button onClick={() => sortBy("vencimento")}>Vencimento {sortIcon("vencimento")}</button></span><span><button onClick={() => sortBy("status")}>Status {sortIcon("status")}</button></span><span><button onClick={() => sortBy("valor")}>Valor {sortIcon("valor")}</button></span><span><button onClick={() => sortBy("recebido")}>Recebido {sortIcon("recebido")}</button></span><span><button onClick={() => sortBy("saldo")}>Saldo {sortIcon("saldo")}</button></span><span>Ações</span>
+              <div className={styles.tableScroll} role="table" aria-label="Tabela de cobranças" aria-rowcount={visible.length + 1} tabIndex={0}>
+              <div className={styles.tableHint} aria-hidden="true">Deslize para ver mais <span>›</span></div>
+              <div className={styles.chargeHeader} role="row">
+                <span role="columnheader"><button onClick={() => sortBy("cliente")}>Cliente {sortIcon("cliente")}</button></span><span role="columnheader"><button onClick={() => sortBy("vencimento")}><span className={styles.desktopHeading}>Vencimento</span><span className={styles.mobileHeading}>Venc.</span> {sortIcon("vencimento")}</button></span><span role="columnheader"><button onClick={() => sortBy("status")}>Status {sortIcon("status")}</button></span><span role="columnheader"><button onClick={() => sortBy("valor")}>Financeiro {sortIcon("valor")}</button></span><span role="columnheader"><button onClick={() => sortBy("recebido")}>Recebido {sortIcon("recebido")}</button></span><span role="columnheader"><button onClick={() => sortBy("saldo")}>Saldo {sortIcon("saldo")}</button></span><span role="columnheader">Ações</span>
               </div>
               {visible.map((charge) => (
-                <div key={charge.id} className={`${styles.chargeRow} ${charge.status === "Atrasado" ? styles.chargeLate : ""} ${charge.status === "Parcial" ? styles.chargePartial : ""}`}>
-                  <div className={styles.clientCell} data-label="Cliente"><b>{charge.client}</b><small>{charge.description}</small></div>
-                  <span data-label="Vencimento">{charge.dueDate}</span>
-                  <div className={styles.statusCell} data-label="Status">
+                <div key={charge.id} role="row" className={`${styles.chargeRow} ${charge.status === "Atrasado" ? styles.chargeLate : ""} ${charge.status === "Parcial" ? styles.chargePartial : ""}`}>
+                  <div className={styles.clientCell} role="cell" data-label="Cliente"><b>{charge.client}</b><small>{charge.description}</small></div>
+                  <span role="cell" data-label="Vencimento">{charge.dueDate}</span>
+                  <div className={styles.statusCell} role="cell" data-label="Status">
                     {charge.status === "Parcial" ? <span className="status-badge status-pendente">Parcial</span> : <StatusBadge status={charge.status} />}
                     {charge.renewal === "Pendente" ? <span className="status-badge status-pendente">Renovação pendente</span> : charge.renewal === "Renovado" ? <span className="status-badge status-pago">Renovado</span> : null}
                     <small>{charge.taskId ? "Pagamento confirmado · falta renovar" : charge.paymentMethod}</small>
                   </div>
-                  <div className={styles.financeItem} data-label="Valor"><strong>{currency.format(charge.value)}</strong></div>
-                  <div className={`${styles.financeItem} ${styles.financeReceived}`} data-label="Recebido"><strong>{currency.format(charge.paidValue)}</strong></div>
-                  <div className={`${styles.financeItem} ${styles.financeBalance}`} data-label="Saldo"><strong>{currency.format(charge.balance)}</strong></div>
-                  <div className={styles.actionCell} data-label="Ações">
+                  <div className={`${styles.financeGroup} ${styles.financeItem}`} role="cell" data-label="Financeiro"><strong>{currency.format(charge.value)}</strong><small className={styles.financeReceived}>Receb. {currency.format(charge.paidValue)}</small><small className={styles.financeBalance}>Saldo {currency.format(charge.balance)}</small></div>
+                  <div className={styles.financeItem + " " + styles.desktopFinance} role="cell" data-label="Valor"><strong>{currency.format(charge.value)}</strong></div>
+                  <div className={`${styles.financeItem} ${styles.financeReceived} ${styles.desktopFinance}`} role="cell" data-label="Recebido"><strong>{currency.format(charge.paidValue)}</strong></div>
+                  <div className={`${styles.financeItem} ${styles.financeBalance} ${styles.desktopFinance}`} role="cell" data-label="Saldo"><strong>{currency.format(charge.balance)}</strong></div>
+                  <div className={styles.actionCell} role="cell" data-label="Ações">
                     {charge.balance > 0 ? (
-                      <button className="button primary small" disabled={Boolean(quickPayingId || savingTaskId)} onClick={() => void quickPay(charge)}>
-                        {quickPayingId === charge.id ? "Salvando..." : "Marcar pago"}
+                      <button className={`button primary small ${styles.mobileAction}`} aria-label={`Marcar pagamento de ${charge.client} como pago`} disabled={Boolean(quickPayingId || savingTaskId)} onClick={() => void quickPay(charge)}>
+                        {quickPayingId === charge.id ? "Salvando..." : <><span className={styles.desktopActionLabel}>Marcar pago</span><span className={styles.mobileActionLabel}>Pago</span></>}
                       </button>
                     ) : null}
                     {charge.balance === 0 && charge.taskId ? (
-                      <button className="button primary small" disabled={Boolean(savingTaskId || quickPayingId)} onClick={() => void completeTask(charge)}>
-                        {savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}
+                      <button className={`button primary small ${styles.mobileAction}`} aria-label={`${taskActionLabel(charge.taskType)} para ${charge.client}`} disabled={Boolean(savingTaskId || quickPayingId)} onClick={() => void completeTask(charge)}>
+                        {savingTaskId === charge.taskId ? "Salvando..." : <><span className={styles.desktopActionLabel}>{taskActionLabel(charge.taskType)}</span><span className={styles.mobileActionLabel}>{charge.taskType === "novo_cliente" ? "Ativar" : "Renovar"}</span></>}
                       </button>
                     ) : null}
-                    <button className="button ghost small" aria-label={`Ver detalhes de ${charge.client}`} onClick={() => setSelectedChargeId(charge.id)}>Detalhes</button>
+                    <button className={`button ghost small ${styles.mobileDetails}`} aria-label={`Ver detalhes de ${charge.client}`} title={`Ver detalhes de ${charge.client}`} onClick={() => setSelectedChargeId(charge.id)}><span className={styles.desktopDetails}>Detalhes</span><Eye className={styles.mobileEye} size={17} /></button>
                   </div>
                 </div>
               ))}
+              </div>
             </>
           ) : !loading && !error ? (
             <div className={styles.empty}>{hasActiveFilters ? "Nenhuma cobrança encontrada para estes filtros." : "Nenhuma pendência agora. Está tudo em dia."}</div>
