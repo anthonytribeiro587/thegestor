@@ -254,6 +254,16 @@
   font-size: 12px;
 }
 
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 @media (max-width: 1050px) {
   .clientHeader,
   .clientRow {

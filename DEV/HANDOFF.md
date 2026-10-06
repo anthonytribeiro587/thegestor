@@ -2,28 +2,32 @@
 
 ## Snapshot
 
-- Updated: 2026-09-30
+- Updated: 2026-10-06
+- Branch: `feat/finalizacao-saas`
 - Project: TheGestor
-- State: SaaS publicado, conectado ao Supabase e com dados reais
+- State: finalização comercial implementada no código; aguardando migrations e validação visual/produção.
 - Orchestration: Orquestrador Maestro V1 beta
 - Read order: `INDEX.md` -> `HANDOFF.md` -> `CONTEXT.md` -> `SPECS/ACTIVE.md`
 - Verification source: `VERIFY.md`
 
 ## Product State
 
-- Auth, empresa e multiempresa com RLS: implementados
-- Perfis admin/operador: implementados
-- Dashboard, clientes, cobranças e fila operacional: implementados
-- Importação XLSX: implementada
-- Controle de créditos/custo: implementado
-- Evolution: base de integração existente, reutilizando infraestrutura do NextLead com Vault
-- Mercado Pago: planejado
-- Automação de cobranças: planejada
-- E2E e observabilidade: pendentes
+- Auth, multiempresa, RLS e separação ADMIN/OPERATOR: existentes e preservados.
+- Clientes: operações de ciclo completas; cadastro/edição seleciona catálogo ativo e mantém assinaturas antigas.
+- Planos: gestão ADMIN, preço atual por RPC e histórico imutável em `planos_precos`.
+- Clientes, cobranças e Dashboard: consultas tenant-scoped agregadas/paginadas, com limites de retorno.
+- Billing, renovações, créditos, WhatsApp/Evolution e Mercado Pago: implementação existente auditada; a branch acrescenta reservas idempotentes para envio e criação de Pix.
+- Integrações e Automações: removida configuração duplicada da Evolution na tela de Integrações.
 
-## Latest Work
+## Verificação e limites
 
-- Entry: camada local do Orquestrador Maestro instalada
-- Changed: `AGENTS.md`, `DEV/`, `scripts/setup-maestro-codespace.sh`
-- Risks: cada Codespace precisa ter o CLI instalado no próprio home
-- Next context: consolidar backlog de produto e atacar primeiro os itens que aproximam o SaaS de venda repetível
+- `npm run lint`: passou.
+- `npm test`: 29 testes em 7 arquivos passaram.
+- `npm run build`: passou (lint + Vitest no prebuild e Next.js gerou 26 páginas).
+- Migrations não foram aplicadas: ambiente sem acesso/ferramentas de banco local; precisam de staging/produção e revisão do plano de implantação.
+- Credenciais, crons, webhook e envio Evolution reais precisam de validação no ambiente comercial.
+- Commit final desta branch será registrado ao concluir a revisão do diff; sem push ou merge.
+
+## Próximo contexto
+
+Revisar o diff e confirmar os fluxos com ADMIN/OPERATOR após aplicar migrations em staging. Não declarar integrações prontas para produção sem validar credenciais e eventos reais.

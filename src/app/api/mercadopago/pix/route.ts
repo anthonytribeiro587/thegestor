@@ -1,47 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createPixOrder, extractPix, mercadoPagoEnvironment, safeMercadoPagoOrderSummary } from "@/lib/mercado-pago";
 import { createClient } from "@/lib/supabase/server";
-
-type ChargeQuery = {
-  id: string;
-  empresa_id: string;
-  status_pagamento: string;
-  clientes: { email: string | null } | { email: string | null }[] | null;
-  cobrancas_financeiras: {
-    valor_original: number;
-    desconto: number;
-    acrescimo: number;
-    valor_pago: number | null;
-  } | {
-    valor_original: number;
-    desconto: number;
-    acrescimo: number;
-    valor_pago: number | null;
-  }[] | null;
-  pagamentos: Array<{
-    id: string;
-    provider_order_id: string | null;
-    provider_payment_id: string | null;
-    status: string;
-    pix_ticket_url: string | null;
-    pix_qr_code: string | null;
-    pix_qr_code_base64: string | null;
-    expira_em: string | null;
-  }> | null;
-};
-
-function first<T>(value: T | T[] | null | undefined): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
-
-function existingPix(row: ChargeQuery) {
-  const now = Date.now();
-  return (row.pagamentos ?? [])
-    .filter((item) => item.provider_order_id && item.pix_qr_code)
-    .find((item) => !item.expira_em || Date.parse(item.expira_em) > now);
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,50 +25,65 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Somente administradores podem gerar Pix." }, { status: 403 });
     }
 
-    const { data, error: chargeError } = await supabase
-      .from("cobrancas")
-      .select("id,empresa_id,status_pagamento,clientes(email),cobrancas_financeiras(valor_original,desconto,acrescimo,valor_pago),pagamentos(id,provider_order_id,provider_payment_id,status,pix_ticket_url,pix_qr_code,pix_qr_code_base64,expira_em)")
-      .eq("id", body.chargeId)
-      .eq("empresa_id", membership.empresa_id)
-      .single();
+    const { data: attemptData, error: attemptError } = await supabase.rpc("iniciar_pix_mercado_pago", {
+      p_empresa_id: membership.empresa_id,
+      p_cobranca_id: body.chargeId,
+    });
+    if (attemptError) throw attemptError;
+    const attempt = attemptData as {
+      reused?: boolean;
+      reason?: string;
+      attemptId?: string;
+      idempotencyKey?: string;
+      amount?: number;
+      payerEmail?: string | null;
+      orderId?: string | null;
+      paymentId?: string | null;
+      status?: string | null;
+      ticketUrl?: string | null;
+      qrCode?: string | null;
+      qrCodeBase64?: string | null;
+      expiresAt?: string | null;
+    } | null;
 
-    if (chargeError) throw chargeError;
-    const charge = data as unknown as ChargeQuery;
-    if (charge.status_pagamento === "pago") return NextResponse.json({ ok: false, error: "Esta cobrança já está paga." }, { status: 409 });
-
-    const reusable = existingPix(charge);
-    if (reusable) {
+    if (!attempt) return NextResponse.json({ ok: false, error: "Não foi possível reservar a geração do Pix." }, { status: 500 });
+    if (attempt.reason === "not_found") return NextResponse.json({ ok: false, error: "Cobrança não encontrada." }, { status: 404 });
+    if (attempt.reason === "charge_closed") return NextResponse.json({ ok: false, error: "Esta cobrança já está paga ou cancelada." }, { status: 409 });
+    if (attempt.reason === "missing_financial") return NextResponse.json({ ok: false, error: "Dados financeiros não encontrados." }, { status: 422 });
+    if (attempt.reason === "no_balance") return NextResponse.json({ ok: false, error: "Esta cobrança não possui saldo para gerar Pix." }, { status: 409 });
+    if (attempt.reason === "existing_order_amount_mismatch") {
+      return NextResponse.json({ ok: false, error: "Há um Pix ativo para outro valor. Aguarde a expiração desse Pix antes de gerar outro." }, { status: 409 });
+    }
+    if (attempt.reused) {
       return NextResponse.json({
         ok: true,
         reused: true,
-        orderId: reusable.provider_order_id,
-        paymentId: reusable.provider_payment_id,
-        ticketUrl: reusable.pix_ticket_url,
-        qrCode: reusable.pix_qr_code,
-        qrCodeBase64: reusable.pix_qr_code_base64,
-        expiresAt: reusable.expira_em,
+        orderId: attempt.orderId,
+        paymentId: attempt.paymentId,
+        status: attempt.status,
+        ticketUrl: attempt.ticketUrl,
+        qrCode: attempt.qrCode,
+        qrCodeBase64: attempt.qrCodeBase64,
+        expiresAt: attempt.expiresAt,
       });
     }
+    if (!attempt.attemptId || !attempt.idempotencyKey) {
+      return NextResponse.json({ ok: false, error: "Não foi possível iniciar a geração do Pix." }, { status: 500 });
+    }
 
-    const financial = first(charge.cobrancas_financeiras);
-    if (!financial) return NextResponse.json({ ok: false, error: "Dados financeiros não encontrados." }, { status: 422 });
-
-    const amount = Math.max(
-      Number(financial.valor_original ?? 0) + Number(financial.acrescimo ?? 0) - Number(financial.desconto ?? 0) - Number(financial.valor_pago ?? 0),
-      0,
-    );
+    const amount = Number(attempt.amount ?? 0);
     if (amount <= 0) return NextResponse.json({ ok: false, error: "Esta cobrança não possui saldo para gerar Pix." }, { status: 409 });
 
     const environment = mercadoPagoEnvironment();
-    const clientEmail = first(charge.clientes)?.email?.trim() || "";
+    const clientEmail = attempt.payerEmail?.trim() || "";
     const payerEmail = environment === "test" ? "test_user_br@testuser.com" : clientEmail;
 
     if (!payerEmail) {
       return NextResponse.json({ ok: false, error: "Cliente sem e-mail. O Mercado Pago exige e-mail do pagador para gerar o Pix em produção." }, { status: 422 });
     }
 
-    const idempotencyKey = randomUUID();
-    const localExternalReference = `thegestor:${charge.id}`;
+    const idempotencyKey = attempt.idempotencyKey;
+    const localExternalReference = `thegestor:${body.chargeId}`;
 
     // O sandbox da Orders API para Pix exige os valores predefinidos da documentação.
     // Em produção usamos a referência real da cobrança para reconciliação.
@@ -132,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     const { error: rpcError } = await supabase.rpc("registrar_pix_mercado_pago", {
       p_empresa_id: membership.empresa_id,
-      p_cobranca_id: charge.id,
+      p_cobranca_id: body.chargeId,
       p_provider_order_id: pix.orderId,
       p_provider_payment_id: pix.paymentId,
       p_status: pix.orderStatus,
@@ -154,7 +128,7 @@ export async function POST(request: NextRequest) {
     await supabase
       .from("cobrancas")
       .update({ external_reference: localExternalReference })
-      .eq("id", charge.id)
+      .eq("id", body.chargeId)
       .eq("empresa_id", membership.empresa_id);
 
     return NextResponse.json({

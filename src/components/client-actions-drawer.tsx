@@ -27,7 +27,7 @@ type SubscriptionRow = {
   parcela_atual: number | null;
   parcelas_total: number | null;
   criado_em: string;
-  planos: { nome: string } | { nome: string }[] | null;
+  planos: { id: string; nome: string; ativo: boolean; periodicidade: string } | { id: string; nome: string; ativo: boolean; periodicidade: string }[] | null;
   assinaturas_financeiras: { valor_acordado: number } | { valor_acordado: number }[] | null;
 };
 
@@ -48,11 +48,15 @@ type Detail = {
   charges: ChargeRow[];
 };
 
+type PlanOption = { id: string; nome: string; ativo: boolean; periodicidade: string; valor: number | null };
+type PlanPriceOption = { valor: number; vigente_ate: string | null; vigente_desde_em: string; criado_em: string };
+type PlanQueryRow = { id: string; nome: string; ativo: boolean; periodicidade: string; planos_precos: PlanPriceOption[] | null };
+
 type FormState = {
+  planoId: string;
   nome: string;
   telefone: string;
   email: string;
-  plano: string;
   valor: string;
   diaVencimento: string;
   creditos: string;
@@ -90,10 +94,10 @@ function statusClass(status: string) {
 function initialForm(detail: Detail): FormState {
   const subscription = detail.subscription;
   return {
+    planoId: first(subscription.planos)?.id ?? "",
     nome: detail.client.nome,
     telefone: detail.client.telefone ?? "",
     email: detail.client.email ?? "",
-    plano: planName(subscription),
     valor: String(agreedValue(subscription)),
     diaVencimento: String(subscription.dia_vencimento),
     creditos: String(subscription.creditos_por_ciclo),
@@ -120,6 +124,7 @@ export function ClientActionsDrawer({
 }) {
   const [mode, setMode] = useState<Mode>(requestedMode);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [plans, setPlans] = useState<PlanOption[]>([]);
   const [form, setForm] = useState<FormState | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,7 +137,7 @@ export function ClientActionsDrawer({
 
     try {
       const supabase = createClient();
-      const [clientResult, subscriptionResult, chargesResult] = await Promise.all([
+      const [clientResult, subscriptionResult, chargesResult, plansResult] = await Promise.all([
         supabase
           .from("clientes")
           .select("id,nome,telefone,email,status,observacoes_operacionais,criado_em")
@@ -141,7 +146,7 @@ export function ClientActionsDrawer({
           .single(),
         supabase
           .from("assinaturas")
-          .select("id,status,dia_vencimento,creditos_por_ciclo,parcela_atual,parcelas_total,criado_em,planos(nome),assinaturas_financeiras(valor_acordado)")
+          .select("id,status,dia_vencimento,creditos_por_ciclo,parcela_atual,parcelas_total,criado_em,planos(id,nome,ativo,periodicidade),assinaturas_financeiras(valor_acordado)")
           .eq("empresa_id", empresaId)
           .eq("cliente_id", clientId)
           .order("criado_em", { ascending: false })
@@ -154,12 +159,28 @@ export function ClientActionsDrawer({
           .eq("cliente_id", clientId)
           .order("competencia", { ascending: false })
           .limit(12),
+        supabase.from("planos")
+          .select("id,nome,ativo,periodicidade,planos_precos(valor,vigente_ate,vigente_desde_em,criado_em)")
+          .is("planos_precos.vigente_ate", null)
+          .eq("empresa_id", empresaId).order("nome"),
       ]);
 
       if (clientResult.error) throw clientResult.error;
       if (subscriptionResult.error) throw subscriptionResult.error;
       if (chargesResult.error) throw chargesResult.error;
+      if (plansResult.error) throw plansResult.error;
       if (!subscriptionResult.data) throw new Error("Este cliente não possui assinatura cadastrada.");
+
+      const planOptions = ((plansResult.data ?? []) as PlanQueryRow[]).map((plan) => {
+        const prices = (plan.planos_precos ?? []).filter((price: PlanPriceOption) => price.vigente_ate === null)
+          .sort((a, b) => b.vigente_desde_em.localeCompare(a.vigente_desde_em) || b.criado_em.localeCompare(a.criado_em));
+        return { id: plan.id, nome: plan.nome, ativo: plan.ativo, periodicidade: plan.periodicidade, valor: prices[0] ? Number(prices[0].valor) : null };
+      });
+      const currentPlan = first((subscriptionResult.data as SubscriptionRow).planos);
+      if (currentPlan && !planOptions.some((plan) => plan.id === currentPlan.id)) {
+        planOptions.push({ ...currentPlan, valor: null });
+      }
+      setPlans(planOptions);
 
       const nextDetail: Detail = {
         client: clientResult.data as ClientRow,
@@ -205,6 +226,17 @@ export function ClientActionsDrawer({
     setForm((current) => current ? { ...current, [field]: value } : current);
   }
 
+  function selectPlan(planId: string) {
+    const selected = plans.find((plan) => plan.id === planId);
+    if (!selected || !form) return;
+    const previousPlanId = first(detail?.subscription.planos)?.id;
+    setForm({
+      ...form,
+      planoId: planId,
+      valor: planId === previousPlanId || selected.valor === null ? form.valor : selected.valor.toFixed(2),
+    });
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!detail || !form || !empresaId || saving) return;
@@ -224,14 +256,14 @@ export function ClientActionsDrawer({
     setError(null);
     try {
       const supabase = createClient();
-      const { error: rpcError } = await supabase.rpc("atualizar_cliente_assinatura", {
+      const { error: rpcError } = await supabase.rpc("atualizar_cliente_com_plano", {
         p_empresa_id: empresaId,
         p_cliente_id: detail.client.id,
         p_assinatura_id: detail.subscription.id,
         p_nome: form.nome.trim(),
         p_telefone: form.telefone.trim(),
         p_email: form.email.trim(),
-        p_plano_nome: form.plano.trim(),
+        p_plano_id: form.planoId,
         p_valor: value,
         p_dia_vencimento: dueDay,
         p_creditos: credits,
@@ -330,7 +362,7 @@ export function ClientActionsDrawer({
             <div className={styles.summary}>
               <div className={styles.summaryItem}><span>Status</span><strong>{detail.client.status === "cancelado" ? "Cancelado" : "Ativo"}</strong><small>{detail.subscription.status === "cancelada" ? "Assinatura cancelada" : "Assinatura ativa"}</small></div>
               <div className={styles.summaryItem}><span>Plano</span><strong>{planName(detail.subscription)}</strong><small>{currency.format(agreedValue(detail.subscription))}</small></div>
-              <div className={styles.summaryItem}><span>Vencimento</span><strong>Dia {detail.subscription.dia_vencimento}</strong><small>Mensal</small></div>
+              <div className={styles.summaryItem}><span>Vencimento</span><strong>Dia {detail.subscription.dia_vencimento}</strong><small>{first(detail.subscription.planos)?.periodicidade ?? "Mensal"}</small></div>
               <div className={styles.summaryItem}><span>Créditos</span><strong>{detail.subscription.creditos_por_ciclo}</strong><small>por ciclo</small></div>
               <div className={styles.summaryItem}><span>Ciclo</span><strong>{cycle}</strong><small>mensalidades</small></div>
               <div className={styles.summaryItem}><span>Cadastro</span><strong>{formatDateBR(detail.client.criado_em.slice(0, 10))}</strong><small>no thegestor</small></div>
@@ -408,8 +440,12 @@ export function ClientActionsDrawer({
               <label>E-mail<input value={form.email} type="email" placeholder="Opcional" onChange={(event) => updateForm("email", event.target.value)} /></label>
             </div>
             <div className="form-grid-2">
-              <label>Plano<input value={form.plano} required minLength={2} onChange={(event) => updateForm("plano", event.target.value)} /></label>
-              <label>Valor mensal<input value={form.valor} type="number" min="0" step="0.01" inputMode="decimal" required onChange={(event) => updateForm("valor", event.target.value)} /></label>
+              <label>Plano<select value={form.planoId} required onChange={(event) => selectPlan(event.target.value)}>
+                {plans.map((plan) => <option key={plan.id} value={plan.id} disabled={!plan.ativo && plan.id !== form.planoId}>
+                  {plan.nome} · {plan.periodicidade}{!plan.ativo ? " · inativo (assinatura atual)" : plan.valor === null ? " · sem preço atual" : ""}
+                </option>)}
+              </select></label>
+              <label>Valor acordado<input value={form.valor} type="number" min="0" step="0.01" inputMode="decimal" required onChange={(event) => updateForm("valor", event.target.value)} /></label>
             </div>
             <div className="form-grid-2">
               <label>Dia de vencimento<input value={form.diaVencimento} type="number" min="1" max="31" required onChange={(event) => updateForm("diaVencimento", event.target.value)} /></label>

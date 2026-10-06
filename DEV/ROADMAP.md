@@ -1,45 +1,29 @@
 # Roadmap
 
-## P0 — Venda repetível
+## Entregue no código
 
-- visualizar/editar/cancelar/reativar clientes
-- gestão própria de planos e preços
-- paginação server-side
-- acabamento UX/UI e onboarding
-- revisão de estados vazios, loading e erros
-- E2E dos fluxos essenciais
+- [x] Cadastro, visualização, edição, cancelamento e reativação de clientes.
+- [x] Gestão administrativa de planos: criação, edição, ativação, preço atual e histórico preservado.
+- [x] Seleção do catálogo ativo nos formulários, mantendo compatibilidade com clientes antigos.
+- [x] Paginação server-side de clientes e cobranças, com busca, filtros, vencimento e contadores agregados.
+- [x] Dashboard com métricas completas agregadas no banco e listas limitadas.
+- [x] Geração mensal de cobranças, atualização de vencidas e deduplicação por assinatura/competência.
+- [x] Pagamento manual, renovação por modalidades e movimentação idempotente de créditos.
+- [x] Evolution/WhatsApp configurável, Vault, histórico, templates, deduplicação e limite diário com reserva atômica.
+- [x] Mercado Pago/Pix por cobrança, referência externa, webhook e baixa idempotente no código.
+- [x] Remoção da configuração duplicada de automações na tela de Integrações.
+- [x] Estados de carregamento/erro principais e revisão de mensagens desatualizadas.
 
-## P1 — Cobrança automatizada
+## Pendências antes de declarar prontidão de produção
 
-- geração automática das próximas cobranças
-- atualização de vencidas
-- lembretes antes/no/após vencimento
-- interrupção automática após pagamento
-- logs e retentativas controladas
+- [ ] Aplicar e validar as migrations desta branch em staging/produção com backup e plano de rollback.
+- [ ] Validar visualmente desktop/mobile e percorrer fluxos reais com contas ADMIN e OPERATOR.
+- [ ] Confirmar credenciais e webhooks Mercado Pago no ambiente comercial, inclusive notificações e reconciliação real.
+- [ ] Confirmar Evolution/Vault, cron de billing e cron de WhatsApp em execução no ambiente alvo.
+- [ ] E2E de cliente → cobrança → pagamento → renovação e testes de integração Supabase/RLS.
+- [ ] Definir política de retentativa manual de mensagens sem quebrar deduplicação ou causar envio duplicado.
+- [ ] Instrumentação de observabilidade e alertas operacionais.
 
-## P1 — WhatsApp
+## Notas
 
-- conexão Evolution por instância
-- status/saúde da conexão
-- templates
-- histórico
-- retentativas
-- provider desacoplado
-
-## P2 — Mercado Pago
-
-- conexão de conta
-- PIX por cobrança
-- external_reference
-- webhook assinado/idempotente
-- baixa automática
-- reconciliação
-- link público
-
-## P2 — Escala
-
-- testes Supabase/RLS
-- E2E completo
-- rate limiting
-- observabilidade
-- métricas de produto
+O roadmap anterior estava desatualizado: os blocos de billing, Evolution/WhatsApp e Mercado Pago já tinham implementações no código. A existência de rotas e migrations não comprova credenciais, cron, webhook nem comportamento em produção; esses itens permanecem sujeitos a validação no ambiente.

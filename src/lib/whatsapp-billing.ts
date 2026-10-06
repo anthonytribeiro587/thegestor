@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendEvolutionText } from "@/lib/evolution";
 import { createPixOrder, extractPix, mercadoPagoEnvironment, safeMercadoPagoOrderSummary } from "@/lib/mercado-pago";
 import { addDays, automationMatchesDate, renderBillingMessage, type MessageAutomationTrigger } from "@/lib/whatsapp-automation-rules";
+import { pixIdempotencyKey } from "@/lib/pix-idempotency";
 
 export type BillingAutomationConfig = {
   empresa_id: string;
@@ -87,7 +87,7 @@ async function ensureProductionPix(admin: SupabaseClient, charge: ChargeRow, amo
   if (!payerEmail) return null;
 
   const externalReference = `thegestor:${charge.id}`;
-  const idempotencyKey = randomUUID();
+  const idempotencyKey = pixIdempotencyKey(charge.id);
   const order = await createPixOrder({
     amount,
     externalReference,
@@ -145,16 +145,16 @@ function saoPauloToday(now = new Date()) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-async function sentToday(admin: SupabaseClient, empresaId: string, today: string) {
+async function reservedToday(admin: SupabaseClient, empresaId: string, today: string) {
   const start = `${today}T00:00:00-03:00`;
-  const end = `${today}T23:59:59.999-03:00`;
+  const end = addDays(today, 1) + "T00:00:00-03:00";
   const { count, error } = await admin
     .from("mensagens_cobranca")
     .select("id", { count: "exact", head: true })
     .eq("empresa_id", empresaId)
-    .eq("status", "enviada")
-    .gte("enviada_em", start)
-    .lte("enviada_em", end);
+    .in("status", ["pendente", "enviada", "erro"])
+    .gte("criado_em", start)
+    .lt("criado_em", end);
   if (error) throw error;
   return count ?? 0;
 }
@@ -209,8 +209,8 @@ export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = 
 
     summary.companies += 1;
     summary.automations += automations.length;
-    const alreadySent = await sentToday(admin, config.empresa_id, today);
-    let remaining = Math.max(Number(config.whatsapp_limite_diario ?? 30) - alreadySent, 0);
+    const alreadyReserved = await reservedToday(admin, config.empresa_id, today);
+    let remaining = Math.max(Number(config.whatsapp_limite_diario ?? 30) - alreadyReserved, 0);
     if (remaining <= 0) {
       summary.limitReached += 1;
       continue;
@@ -237,50 +237,73 @@ export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = 
           continue;
         }
 
-        const { data: reserved, error: reserveError } = await admin
-          .from("mensagens_cobranca")
-          .insert({
-            empresa_id: charge.empresa_id,
-            cobranca_id: charge.id,
-            cliente_id: charge.cliente_id,
-            automacao_id: automation.id,
-            tipo: automation.gatilho,
-            provedor: "evolution",
-            status: "pendente",
-            telefone: phone,
-          })
-          .select("id")
-          .single();
+        const { data: reservationData, error: reserveError } = await admin.rpc("reservar_mensagem_cobranca", {
+          p_empresa_id: charge.empresa_id,
+          p_cobranca_id: charge.id,
+          p_cliente_id: charge.cliente_id,
+          p_automacao_id: automation.id,
+          p_tipo: automation.gatilho,
+          p_hoje: today,
+        });
 
         if (reserveError) {
-          if (reserveError.code === "23505") {
-            summary.ignored += 1;
-            continue;
-          }
           summary.errors += 1;
           continue;
         }
+        const reservation = reservationData as { reserved?: boolean; reason?: string; id?: string; telefone?: string } | null;
+        if (!reservation?.reserved || !reservation.id) {
+          if (reservation?.reason === "daily_limit") {
+            summary.limitReached += 1;
+            remaining = 0;
+            break;
+          }
+          summary.ignored += 1;
+          continue;
+        }
+        const reservedId = reservation.id;
 
         try {
-          const paymentLink = automation.incluir_pagamento ? await ensureProductionPix(admin, charge, amount) : null;
+          const { data: latestData, error: latestError } = await admin
+            .from("cobrancas")
+            .select("id,empresa_id,cliente_id,competencia,vencimento,status_pagamento,clientes(nome,telefone,email,status),cobrancas_financeiras(valor_original,desconto,acrescimo,valor_pago)")
+            .eq("id", charge.id)
+            .eq("empresa_id", charge.empresa_id)
+            .maybeSingle();
+          if (latestError) throw latestError;
+          const latest = latestData as unknown as ChargeRow | null;
+          const latestClient = first(latest?.clientes);
+          const latestFinancial = first(latest?.cobrancas_financeiras);
+          const latestPhone = latestClient?.telefone?.trim() ?? "";
+          const latestAmount = financialBalance(latestFinancial);
+          if (!latest || !["pendente", "atrasado"].includes(latest.status_pagamento)
+            || latestClient?.status !== "ativo" || !latestPhone || latestAmount <= 0) {
+            await admin.from("mensagens_cobranca")
+              .update({ status: "ignorada", erro: null, atualizado_em: new Date().toISOString() })
+              .eq("id", reservedId);
+            summary.ignored += 1;
+            continue;
+          }
+
+          const paymentLink = automation.incluir_pagamento ? await ensureProductionPix(admin, latest, latestAmount) : null;
           const message = renderBillingMessage({
             template: automation.mensagem,
-            name: client.nome,
-            dueDate: charge.vencimento,
-            amount,
+            name: latestClient.nome,
+            dueDate: latest.vencimento,
+            amount: latestAmount,
             paymentLink,
           });
-          const result = await sendEvolutionText(phone, message);
+          const result = await sendEvolutionText(latestPhone, message);
           await admin
             .from("mensagens_cobranca")
             .update({
               status: "enviada",
               mensagem: message,
+              telefone: latestPhone,
               provider_message_id: result.key?.id ?? null,
               enviada_em: new Date().toISOString(),
               atualizado_em: new Date().toISOString(),
             })
-            .eq("id", reserved.id);
+            .eq("id", reservedId);
           summary.sent += 1;
           remaining -= 1;
         } catch (cause) {
@@ -291,7 +314,7 @@ export async function runWhatsAppBillingAutomation(admin: SupabaseClient, now = 
               erro: cause instanceof Error ? cause.message.slice(0, 800) : "Falha no envio automático.",
               atualizado_em: new Date().toISOString(),
             })
-            .eq("id", reserved.id);
+            .eq("id", reservedId);
           summary.errors += 1;
         }
       }

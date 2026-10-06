@@ -1,19 +1,31 @@
 # Verify
 
-## Latest Verification
+## Finalização comercial — 2026-10-06
 
-- Date: 2026-09-30
-- Scope: instalação da camada local do Orquestrador Maestro
+### Checks executados
 
-## Checks
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; Next.js compilou e gerou as 26 páginas.
+- Auditoria de fonte: roadmap comparado às páginas, rotas, bibliotecas e migrations existentes.
+- `git branch --show-current` — `feat/finalizacao-saas`.
 
-- `AGENTS.md` criado na raiz.
-- `DEV/` criado com contexto específico do produto.
-- Comandos de qualidade alinhados ao `package.json`.
-- Bootstrap configurado para o CLI oficial V1 beta.
-- Nenhum arquivo de `src/`, Supabase ou configuração de produção foi alterado.
+### Evidências no código
 
-## Outcome
+- Planos: RPCs de criação/alteração transacionais, proteção contra exclusão/edição histórica e tela restrita a ADMIN.
+- Paginação: RPCs tenant-scoped de clientes/cobranças com filtros, totais, limites e agregados; Dashboard com retorno limitado e cálculos no banco.
+- WhatsApp: reserva atômica por empresa/dia com bloqueio de concorrência e validação de estado antes do envio.
+- Mercado Pago: tentativa Pix persistida antes da chamada externa e reutilização da chave de idempotência.
+- UI: aviso obsoleto removido de Configurações e configuração duplicada removida de Integrações.
+- RLS: novas funções validam `private.e_admin`; a RPC de mensagem é exclusiva do `service_role`; integrações seguem server-side/Vault.
 
-- Passed: estrutura local versionada.
-- Pending: executar o bootstrap em cada Codespace novo que ainda não tenha o Maestro no home.
+### Não verificável localmente
+
+- Não há `psql`, Supabase CLI ou banco local para aplicar/testar migrations.
+- Migrations novas ainda precisam ser aplicadas e validadas em staging antes de produção.
+- Credenciais/conta Mercado Pago, notificações webhook, cron e conexão Evolution/Vault dependem do ambiente comercial.
+- Fluxos visuais mobile, E2E e isolamento com usuários reais ADMIN/OPERATOR seguem no checklist de staging.
+
+### Ambiente/build
+
+O build inicial de baseline falhou ao prerenderizar `/dashboard` sem credenciais Supabase. A rota autenticada foi marcada dinâmica e o build final passou.

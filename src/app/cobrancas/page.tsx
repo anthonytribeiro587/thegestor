@@ -1,38 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Search } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { ChargeActionsDrawer } from "@/components/charge-actions-drawer";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
-import { formatDateBR, operationalChargeStatus, todayInSaoPaulo } from "@/lib/billing";
+import { formatDateBR, monthBounds, todayInSaoPaulo } from "@/lib/billing";
 import { currency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import styles from "./cobrancas.module.css";
 
 type Tab = "Precisa de ação" | "Atrasado" | "A vencer" | "Parcial" | "Pago" | "Todas";
-
-type ChargeRow = {
-  id: string;
-  vencimento: string;
-  status_pagamento: string;
-  pago_em: string | null;
-  origem: string;
-  creditos_previstos: number | null;
-  clientes: { nome: string } | { nome: string }[] | null;
-  assinaturas: { planos: { nome: string } | { nome: string }[] | null } | { planos: { nome: string } | { nome: string }[] | null }[] | null;
-  cobrancas_financeiras: { valor_original: number; valor_pago: number | null } | { valor_original: number; valor_pago: number | null }[] | null;
-  pagamentos: { metodo: string | null; status: string }[] | null;
-};
-
-type QueueRow = {
-  tarefa_id: string;
-  cobranca_id: string | null;
-  tipo: string;
-  cliente_nome: string;
-};
 
 type UiCharge = {
   id: string;
@@ -51,27 +31,28 @@ type UiCharge = {
   needsAction: boolean;
 };
 
-function first<T>(value: T | T[] | null | undefined): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? value[0] ?? null : value;
-}
+type ChargePageResult = {
+  items: Array<{
+    id: string; cliente: string; descricao: string; vencimento: string; statusPagamento: string;
+    pagoEm: string | null; metodoPagamento: string | null; valor: number; valorPago: number;
+    saldo: number; tarefaId: string | null; tipoTarefa: string | null; status: UiCharge["status"];
+    precisaAcao: boolean;
+  }>;
+  total: number;
+  stats: { vence_hoje: number; em_atraso: number; renovacoes_pendentes: number; quitadas_no_mes: number };
+};
 
-function description(row: ChargeRow) {
-  const subscription = first(row.assinaturas);
-  const plan = first(subscription?.planos);
-  return plan?.nome ? `Plano ${plan.nome}` : "Cobrança recorrente";
-}
+const PAGE_SIZE = 25;
 
-function paymentMethod(row: ChargeRow) {
-  const payment = row.pagamentos?.find((item) => item.status === "approved" || item.status === "pago" || item.status === "parcial") ?? row.pagamentos?.[0];
-  if (!payment?.metodo) return row.status_pagamento === "pago" ? "Manual" : "Aguardando pagamento";
-  const method = payment.metodo.toLowerCase();
+function paymentMethod(methodValue: string | null, paymentStatus: string) {
+  if (!methodValue) return paymentStatus === "pago" ? "Manual" : "Aguardando pagamento";
+  const method = methodValue.toLowerCase();
   if (method === "importacao_planilha") return "Importado da planilha";
   if (method.includes("pix")) return "PIX";
   if (method.includes("credit") || method.includes("cart")) return "Cartão de crédito";
   if (method.includes("boleto")) return "Boleto bancário";
   if (method === "manual") return "Manual";
-  return payment.metodo;
+  return methodValue;
 }
 
 function taskActionLabel(type: string | null) {
@@ -82,6 +63,9 @@ export default function ChargesPage() {
   const [tab, setTab] = useState<Tab>("Precisa de ação");
   const [query, setQuery] = useState("");
   const [charges, setCharges] = useState<UiCharge[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<ChargePageResult["stats"]>({ vence_hoje: 0, em_atraso: 0, renovacoes_pendentes: 0, quitadas_no_mes: 0 });
+  const [page, setPage] = useState(1);
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [selectedChargeId, setSelectedChargeId] = useState<string | null>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
@@ -115,62 +99,37 @@ export default function ChargesPage() {
       if (!membership?.empresa_id) throw new Error("Usuário sem empresa vinculada.");
       setEmpresaId(membership.empresa_id);
 
-      const [chargesResult, queueResult] = await Promise.all([
-        supabase
-          .from("cobrancas")
-          .select("id,vencimento,status_pagamento,pago_em,origem,creditos_previstos,clientes(nome),assinaturas(planos(nome)),cobrancas_financeiras(valor_original,valor_pago),pagamentos(metodo,status)")
-          .eq("empresa_id", membership.empresa_id)
-          .neq("status_pagamento", "cancelado")
-          .order("vencimento", { ascending: true })
-          .limit(500),
-        supabase
-          .from("fila_operacional")
-          .select("tarefa_id,cobranca_id,tipo,cliente_nome")
-          .eq("empresa_id", membership.empresa_id)
-          .eq("status_tarefa", "pendente")
-          .order("criado_em", { ascending: true })
-          .limit(500),
-      ]);
-
-      if (chargesResult.error) throw chargesResult.error;
-      if (queueResult.error) throw queueResult.error;
-
-      const queue = (queueResult.data ?? []) as QueueRow[];
-      const taskByCharge = new Map<string, QueueRow>();
-      for (const task of queue) {
-        if (task.cobranca_id && !taskByCharge.has(task.cobranca_id)) taskByCharge.set(task.cobranca_id, task);
-      }
-
       const today = todayInSaoPaulo();
-      const mapped = ((chargesResult.data ?? []) as ChargeRow[]).map((row) => {
-        const financial = first(row.cobrancas_financeiras);
-        const original = Number(financial?.valor_original ?? 0);
-        const paid = Number(financial?.valor_pago ?? 0);
-        const balance = Math.max(original - paid, 0);
-        const operational = operationalChargeStatus(row.status_pagamento, row.vencimento, today);
-        const status: UiCharge["status"] = row.status_pagamento !== "pago" && paid > 0 && paid < original ? "Parcial" : operational;
-        const task = taskByCharge.get(row.id) ?? null;
-        const needsAction = Boolean(task) || status === "Atrasado" || status === "Parcial" || (balance > 0 && row.vencimento === today);
-
-        return {
-          id: row.id,
-          client: first(row.clientes)?.nome ?? "Cliente",
-          description: description(row),
-          dueDate: formatDateBR(row.vencimento),
-          dueRaw: row.vencimento,
-          paidAt: row.pago_em,
-          status,
-          paymentMethod: paymentMethod(row),
-          value: original,
-          paidValue: paid,
-          balance,
-          taskId: task?.tarefa_id ?? null,
-          taskType: task?.tipo ?? null,
-          needsAction,
-        };
+      const { firstDay } = monthBounds(today);
+      const { data, error: chargesError } = await supabase.rpc("buscar_cobrancas_paginadas", {
+        p_empresa_id: membership.empresa_id,
+        p_hoje: today,
+        p_mes: firstDay,
+        p_busca: query.trim(),
+        p_filtro: tab,
+        p_offset: (page - 1) * PAGE_SIZE,
+        p_limite: PAGE_SIZE,
       });
-
-      setCharges(mapped);
+      if (chargesError) throw chargesError;
+      const result = data as unknown as ChargePageResult;
+      setCharges((result.items ?? []).map((item) => ({
+        id: item.id,
+        client: item.cliente,
+        description: item.descricao,
+        dueDate: formatDateBR(item.vencimento),
+        dueRaw: item.vencimento,
+        paidAt: item.pagoEm,
+        status: item.status,
+        paymentMethod: paymentMethod(item.metodoPagamento, item.statusPagamento),
+        value: Number(item.valor ?? 0),
+        paidValue: Number(item.valorPago ?? 0),
+        balance: Number(item.saldo ?? 0),
+        taskId: item.tarefaId,
+        taskType: item.tipoTarefa,
+        needsAction: item.precisaAcao,
+      })));
+      setTotal(Number(result.total ?? 0));
+      setStats(result.stats ?? { vence_hoje: 0, em_atraso: 0, renovacoes_pendentes: 0, quitadas_no_mes: 0 });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Não foi possível carregar as cobranças.";
       if (!silent) setError(message);
@@ -178,7 +137,7 @@ export default function ChargesPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [page, query, tab]);
 
   useEffect(() => {
     void loadData();
@@ -253,45 +212,35 @@ export default function ChargesPage() {
     }
   }
 
-  const visible = useMemo(() => charges.filter((charge) => {
-    const matchesTab = tab === "Todas" || (tab === "Precisa de ação" ? charge.needsAction : charge.status === tab);
-    const matchesQuery = `${charge.client} ${charge.description}`.toLowerCase().includes(query.toLowerCase());
-    return matchesTab && matchesQuery;
-  }), [charges, tab, query]);
-
-  const today = todayInSaoPaulo();
-  const currentMonth = today.slice(0, 7);
-  const dueToday = charges.filter((charge) => charge.balance > 0 && charge.dueRaw === today).length;
-  const overdue = charges.filter((charge) => charge.status === "Atrasado" && charge.balance > 0).length;
-  const pendingRenewals = charges.filter((charge) => Boolean(charge.taskId)).length;
-  const paidThisMonth = charges.filter((charge) => charge.status === "Pago" && charge.value > 0 && charge.paidValue > 0 && charge.paidAt?.slice(0, 7) === currentMonth).length;
+  const visible = charges;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <AppShell>
       <PageHeader title="Cobranças" subtitle="Tudo o que precisa cobrar, conferir ou renovar em um só lugar" />
 
       <section className="stats-grid">
-        <StatCard title="Vencem hoje" value={String(dueToday)} helper="Resolver hoje" icon={Clock3} />
-        <StatCard title="Em atraso" value={String(overdue)} helper="Precisam de cobrança" icon={AlertTriangle} tone="orange" />
-        <StatCard title="Para renovar" value={String(pendingRenewals)} helper="Pagamento já confirmado" icon={CheckCircle2} tone="green" />
-        <StatCard title="Quitadas no mês" value={String(paidThisMonth)} helper="Com valor recebido" icon={CheckCircle2} tone="green" />
+        <StatCard title="Vencem hoje" value={String(stats.vence_hoje)} helper="Resolver hoje" icon={Clock3} />
+        <StatCard title="Em atraso" value={String(stats.em_atraso)} helper="Precisam de cobrança" icon={AlertTriangle} tone="orange" />
+        <StatCard title="Para renovar" value={String(stats.renovacoes_pendentes)} helper="Pagamento já confirmado" icon={CheckCircle2} tone="green" />
+        <StatCard title="Quitadas no mês" value={String(stats.quitadas_no_mes)} helper="Com valor recebido" icon={CheckCircle2} tone="green" />
       </section>
 
       <div className={styles.workspace}>
         <section className={styles.chargePanel}>
           <div className={styles.panelHead}>
             <h2>Cobranças e pendências</h2>
-            <span>{visible.length} registro(s)</span>
+            <span>{total} registro(s) · página {page} de {totalPages}</span>
           </div>
 
           <div className={styles.toolbar}>
             <label className={styles.search}>
               <Search size={16} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar cliente..." />
+              <input value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." />
             </label>
             <div className={styles.filters}>
               {(["Precisa de ação", "Atrasado", "A vencer", "Parcial", "Pago", "Todas"] as Tab[]).map((item) => (
-                <button key={item} onClick={() => setTab(item)} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>
+                <button key={item} onClick={() => { setPage(1); setTab(item); }} className={`filter-chip ${tab === item ? "active" : ""}`}>{item}</button>
               ))}
             </div>
           </div>
@@ -335,8 +284,13 @@ export default function ChargesPage() {
               ))}
             </>
           ) : !loading && !error ? (
-            <div className={styles.empty}>{tab === "Precisa de ação" ? "Nenhuma pendência agora. Está tudo em dia." : "Nenhuma cobrança encontrada."}</div>
+            <div className={styles.empty}>{query || tab !== "Precisa de ação" ? "Nenhuma cobrança encontrada para este filtro." : "Nenhuma pendência agora. Está tudo em dia."}</div>
           ) : null}
+          {!loading && !error && total > 0 ? <div className={styles.pagination}>
+            <button className="button secondary small" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button>
+            <span>Página {page} de {totalPages}</span>
+            <button className="button secondary small" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Próxima</button>
+          </div> : null}
         </section>
       </div>
 

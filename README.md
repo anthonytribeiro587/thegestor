@@ -25,7 +25,10 @@ A aplicação está conectada ao Supabase e publicada na Vercel, com dados reais
 - Ao concluir renovação, créditos previstos passam para utilizados de forma atômica.
 - Operador pode ver quantidade de créditos da tarefa, mas nunca valores financeiros.
 - Auditoria básica.
-- Estrutura preparada para Mercado Pago e WhatsApp/Evolution.
+- Catálogo administrativo de planos e preços com histórico preservado.
+- Paginação server-side de clientes e cobranças; métricas completas do Dashboard agregadas no banco.
+- Evolution/WhatsApp com configuração, Vault, histórico, limite diário e deduplicação.
+- Mercado Pago/Pix por cobrança, webhook e baixa automática implementados no código; credenciais e operação real ainda precisam de validação no ambiente comercial.
 - Layout responsivo desktop, tablet e mobile.
 - Testes e TypeScript executados automaticamente antes de cada build.
 
@@ -71,33 +74,35 @@ A importação atual reconhece:
 - [x] Fila operacional sem financeiro.
 - [x] Créditos e custo médio por crédito.
 - [x] Importação XLSX.
-- [ ] Visualizar/editar/cancelar/reativar clientes.
-- [ ] Gestão própria de planos e preços.
-- [ ] Paginação server-side.
+- [x] Visualizar/editar/cancelar/reativar clientes.
+- [x] Gestão própria de planos e preços com histórico.
+- [x] Paginação server-side de clientes e cobranças.
+- [x] Dashboard com consultas agregadas e listas limitadas.
 
 ### Mercado Pago
 
 - [ ] Conectar conta Mercado Pago.
-- [ ] Gerar PIX individual por cobrança.
-- [ ] `external_reference` vinculado à cobrança.
-- [ ] Webhook assinado e idempotente.
-- [ ] Baixa automática do pagamento.
-- [ ] Reconciliação de pagamentos.
+- [x] Gerar Pix individual por cobrança e reutilizar tentativa/chave idempotente.
+- [x] `external_reference` vinculado à cobrança.
+- [x] Webhook com validação e tratamento idempotente no código.
+- [x] Baixa automática do pagamento no código.
+- [ ] Validar credenciais, notificações e reconciliação no ambiente comercial.
 - [ ] Link público para novos clientes.
 
 ### Automação de cobranças
 
-- [ ] Gerar próximas cobranças automaticamente.
-- [ ] Atualizar vencidas de forma agendada.
-- [ ] Lembrete antes/no/após vencimento.
-- [ ] Parar cobrança automaticamente após pagamento.
+- [x] Gerar próximas cobranças automaticamente com deduplicação.
+- [x] Atualizar vencidas de forma agendada.
+- [x] Lembretes antes/no/após vencimento configuráveis.
+- [x] Interromper automação após pagamento.
+- [ ] Validar crons e execução em produção.
 
 ### WhatsApp
 
-- [ ] Conectar Evolution API por instância.
-- [ ] QR/status da conexão.
-- [ ] Templates e histórico de mensagens.
-- [ ] Retentativas controladas.
+- [x] Conectar Evolution API por instância, credencial via Vault.
+- [x] QR/status da conexão.
+- [x] Templates, histórico, deduplicação e limite diário.
+- [ ] Validar conexão e envio real em produção; definir retentativa manual segura.
 - [ ] Camada desacoplada para futura Cloud API.
 
 ### Qualidade e segurança
@@ -108,6 +113,7 @@ A importação atual reconhece:
 - [ ] E2E cliente → cobrança → pagamento → renovação.
 - [ ] Testes de webhook Mercado Pago.
 - [ ] Rate limiting e observabilidade.
+- [ ] Testes E2E visuais e validação final ADMIN/OPERATOR em staging.
 
 ## Segurança
 
@@ -116,3 +122,4 @@ A importação atual reconhece:
 - RLS protege as tabelas de negócio.
 - A planilha de clientes não é armazenada no GitHub.
 - Integrações devem guardar segredos apenas no servidor/Vault.
+- A presença de código para integrações não equivale à validação de credenciais ou execução em produção.

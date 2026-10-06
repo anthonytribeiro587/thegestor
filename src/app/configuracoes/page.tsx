@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { currency } from "@/lib/format";
@@ -109,7 +110,8 @@ export default function SettingsPage() {
     <AppShell>
       <PageHeader title="Configurações" subtitle="Preferências gerais e custos operacionais" />
       {loading ? <section className="card"><div className="empty-note">Carregando configurações...</div></section> : null}
-      {!loading ? (
+      {!loading && error && !empresaId ? <section className="card"><div className="empty-note" role="alert">{error} <button className="text-link" onClick={() => window.location.reload()}>Tentar novamente</button></div></section> : null}
+      {!loading && !error ? (
         <section className="grid-2">
           <div className="card">
             <div className="card-header"><h2>Empresa</h2></div>
@@ -127,14 +129,12 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="card">
-            <div className="card-header"><h2>Automação de cobranças</h2></div>
+            <div className="card-header"><h2>Automações de cobrança</h2></div>
             <div className="card-body">
-              <div className="form-hint">As regras de lembrete por WhatsApp serão liberadas quando conectarmos a Evolution API. Removi os botões fictícios para não parecer que uma configuração está ativa quando ainda não está.</div>
-              <div style={{ marginTop: 16 }} className="queue">
-                <div className="queue-item"><div className="queue-dot info">1</div><div className="queue-copy"><b>Antes do vencimento</b><small>Configuração será ativada com WhatsApp.</small></div></div>
-                <div className="queue-item"><div className="queue-dot info">2</div><div className="queue-copy"><b>No vencimento</b><small>Mensagem automática associada à cobrança.</small></div></div>
-                <div className="queue-item"><div className="queue-dot info">3</div><div className="queue-copy"><b>Após atraso</b><small>Parará automaticamente quando o pagamento for confirmado.</small></div></div>
-              </div>
+              <p style={{ margin: "0 0 14px", color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
+                Configure horários, mensagens e regras de envio na área de Automações. O status da Evolution e do Mercado Pago fica em Integrações.
+              </p>
+              <Link className="button secondary" href="/automacoes">Gerenciar automações</Link>
             </div>
           </div>
         </section>
