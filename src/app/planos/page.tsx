@@ -205,7 +205,10 @@ export default function PlansPage() {
       {notice ? <div className="form-success" role="status" style={{ marginBottom: 14 }}>{notice}</div> : null}
       {loading ? <section className="card"><div className="empty-note">Carregando planos...</div></section> : null}
       {!loading && !roleError && !error && plans.length === 0 ? (
-        <section className="card"><div className="empty-note">Nenhum plano cadastrado. Crie o primeiro para selecionar planos no cadastro de clientes.</div></section>
+        <section className={`card ${styles.emptyState}`}>
+          <div><b>Nenhum plano cadastrado</b><p>Crie o primeiro plano para começar a cadastrar clientes.</p></div>
+          <button className="button primary" onClick={openCreate}><Plus size={15} aria-hidden="true" />Criar primeiro plano</button>
+        </section>
       ) : null}
 
       {!loading && !roleError && plans.length > 0 ? (
@@ -227,14 +230,14 @@ export default function PlansPage() {
                     {price ? <small>Desde {new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(new Date(`${price.vigente_desde}T00:00:00Z`))}</small> : <small>Adicione um preço para oferecer este plano</small>}
                   </div>
                   <div className={styles.actions}>
-                    <button className="button secondary small" onClick={() => void toggleHistory(plan)}><Clock3 size={13} style={{ verticalAlign: "middle", marginRight: 5 }} />{historyOpen === plan.id ? "Ocultar histórico" : "Histórico"}</button>
-                    <button className="button secondary small" onClick={() => openEdit(plan)}><Pencil size={13} style={{ verticalAlign: "middle", marginRight: 5 }} />Editar</button>
+                    <button className="button secondary small" onClick={() => void toggleHistory(plan)}><Clock3 size={13} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 5 }} />{historyOpen === plan.id ? "Ocultar histórico" : "Histórico"}</button>
+                    <button className="button secondary small" onClick={() => openEdit(plan)}><Pencil size={13} aria-hidden="true" style={{ verticalAlign: "middle", marginRight: 5 }} />Editar</button>
                   </div>
                 </div>
                 {historyOpen === plan.id ? (
                   <div className={styles.history}>
                     <b>Histórico de preços</b>
-                    {!planHistory ? <div className={styles.historyEmpty}>Carregando histórico...</div> : null}
+                    {!planHistory ? <div className={styles.historyEmpty} aria-live="polite">Carregando histórico...</div> : null}
                     {planHistory?.length === 0 ? <div className={styles.historyEmpty}>Nenhum preço registrado.</div> : null}
                     {planHistory?.map((item) => (
                       <div className={styles.historyRow} key={item.id}>

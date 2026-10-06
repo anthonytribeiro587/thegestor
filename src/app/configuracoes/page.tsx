@@ -129,12 +129,12 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="card">
-            <div className="card-header"><h2>Automações de cobrança</h2></div>
+            <div className="card-header"><h2>Atalhos</h2></div>
             <div className="card-body">
-              <p style={{ margin: "0 0 14px", color: "var(--muted)", fontSize: 12, lineHeight: 1.5 }}>
-                Configure horários, mensagens e regras de envio na área de Automações. O status da Evolution e do Mercado Pago fica em Integrações.
-              </p>
-              <Link className="button secondary" href="/automacoes">Gerenciar automações</Link>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <Link className="button secondary" href="/automacoes">Automações</Link>
+                <Link className="button secondary" href="/integracoes">Integrações</Link>
+              </div>
             </div>
           </div>
         </section>

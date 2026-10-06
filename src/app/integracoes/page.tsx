@@ -203,6 +203,8 @@ export default function IntegrationsPage() {
   const events = mp?.events ?? [];
   const waConnected = wa?.connection?.state === "open";
   const recentMessages = wa?.recentMessages ?? [];
+  const mpStatus = loading ? "Pendente" : !mp ? "Erro" : mp.integration?.ultimo_erro ? "Erro" : connected && ready ? "Conectado" : !mp.tokenConfigured ? "Não configurado" : "Pendente";
+  const waStatus = waLoading ? "Pendente" : !wa ? "Erro" : wa.connectionError ? "Erro" : waConnected ? "Conectado" : !wa.configured ? "Não configurado" : "Pendente";
 
   return (
     <AppShell>
@@ -222,23 +224,28 @@ export default function IntegrationsPage() {
                   <span className="integration-icon"><CreditCard size={20} /></span>
                   <div><h3>Mercado Pago <small style={{ color: "#6b7a91", fontWeight: 600 }}>MP v2</small></h3><p style={{ margin: 0 }}>Orders API + Pix + baixa automática por webhook.</p></div>
                 </div>
-                <StatusBadge status={connected && ready ? "Conectado" : "Pendente"} />
+                <StatusBadge status={mpStatus} />
               </div>
 
-              {loading ? <div className="empty-note">Verificando configuração...</div> : (
+              {loading ? <div className="empty-note" aria-live="polite">Verificando configuração...</div> : !mp ? <div className="form-error" role="alert">Não foi possível consultar o Mercado Pago. Tente atualizar o status.</div> : (
                 <>
-                  <div className="integration-field"><label>Ambiente</label><code>{mp?.environment === "production" ? "Produção" : "Teste"}</code></div>
-                  <div className="integration-field"><label>Access Token</label><code>{mp?.tokenConfigured ? "Configurado no servidor ✓" : "Falta MERCADO_PAGO_ACCESS_TOKEN"}</code></div>
-                  <div className="integration-field"><label>Assinatura secreta do webhook</label><code>{mp?.webhookSecretConfigured ? "Configurada ✓" : "Falta MERCADO_PAGO_WEBHOOK_SECRET"}</code></div>
-                  <div className="integration-field"><label>Chave privada do Supabase</label><code>{mp?.adminKeyConfigured ? "Configurada ✓" : "Falta SUPABASE_SECRET_KEY (ou service_role legado)"}</code></div>
-                  {mp?.environment === "test" ? <div className="integration-field"><label>Pagador de teste</label><code>Sandbox oficial APRO ✓</code></div> : null}
-                  <div className="integration-field"><label>Webhook do thegestor</label><code>{mp?.webhookUrl ?? "—"}</code></div>
+                  <p className="integration-summary">{mpStatus === "Conectado" ? "Conta conectada e pronta para receber pagamentos." : mpStatus === "Erro" ? "Há um problema na conexão. Atualize ou teste novamente." : mpStatus === "Não configurado" ? "Configure o Mercado Pago para habilitar pagamentos." : "A configuração está incompleta."}</p>
+                  <details className="technical-details">
+                    <summary>Detalhes técnicos</summary>
+                    <div className="integration-field"><label>Ambiente</label><code>{mp.environment === "production" ? "Produção" : "Teste"}</code></div>
+                    <div className="integration-field"><label>Access Token</label><code>{mp.tokenConfigured ? "Configurado no servidor" : "Falta MERCADO_PAGO_ACCESS_TOKEN"}</code></div>
+                    <div className="integration-field"><label>Assinatura do webhook</label><code>{mp.webhookSecretConfigured ? "Configurada" : "Falta MERCADO_PAGO_WEBHOOK_SECRET"}</code></div>
+                    <div className="integration-field"><label>Chave privada do Supabase</label><code>{mp.adminKeyConfigured ? "Configurada" : "Falta SUPABASE_SECRET_KEY (ou service_role legado)"}</code></div>
+                    {mp.environment === "test" ? <div className="integration-field"><label>Pagador de teste</label><code>Sandbox oficial APRO</code></div> : null}
+                    <div className="integration-field"><label>Webhook do TheGestor</label><code>{mp.webhookUrl || "Não configurado"}</code></div>
+                  </details>
+                  {!ready ? <p className="integration-hint">Para liberar pagamentos, complete os itens pendentes em Detalhes técnicos.</p> : null}
                   <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
                     <button className="button primary" disabled={!mp?.tokenConfigured || testing} onClick={() => void testConnection()}>{testing ? "Testando..." : "Testar conexão"}</button>
                     <button className="button secondary" disabled={!mp?.webhookUrl} onClick={() => void copyWebhook()}><Copy size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Copiar webhook</button>
                     <button className="button secondary" onClick={() => void loadStatus()}><RefreshCw size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Atualizar</button>
                   </div>
-                  {message ? <div className={message.toLowerCase().includes("falha") || message.toLowerCase().includes("não") || message.toLowerCase().includes("pendente") ? "form-error" : "form-success"} style={{ marginTop: 12 }}>{message}</div> : null}
+                  {message ? <div className={message.toLowerCase().includes("falha") || message.toLowerCase().includes("não") || message.toLowerCase().includes("pendente") ? "form-error" : "form-success"} role={message.toLowerCase().includes("falha") ? "alert" : "status"} style={{ marginTop: 12 }}>{message}</div> : null}
                 </>
               )}
             </div>
@@ -251,8 +258,7 @@ export default function IntegrationsPage() {
                 <div style={{ display: "flex", gap: 9 }}><ShieldCheck size={17} color={mp?.adminKeyConfigured ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Supabase Secret key disponível somente no backend.</p></div>
                 <div style={{ display: "flex", gap: 9 }}><Webhook size={17} color={ready ? "#079669" : "#6b7a91"} /><p style={{ margin: 0 }}>Evento <b>Order (Mercado Pago)</b> apontando para a URL do webhook acima.</p></div>
               </div>
-              <p style={{ marginTop: 16 }}><b>Status técnico:</b> {ready ? "backend pronto para teste" : "veja exatamente o item pendente ao lado"}.</p>
-              <p>Um teste do Mercado Pago retorna <b>401</b> quando a assinatura recebida não pode ser validada. Depois de configurar a assinatura secreta correta e redeployar, o endpoint passa a aceitar somente notificações autenticadas pelo Mercado Pago.</p>
+              <p style={{ marginTop: 16 }}>Os pagamentos só são confirmados depois que o Mercado Pago valida o evento recebido.</p>
             </div>
           </div>
         ) : null}
@@ -265,22 +271,26 @@ export default function IntegrationsPage() {
                   <span className="integration-icon"><MessageCircle size={20} /></span>
                   <div><h3>WhatsApp / Evolution</h3><p style={{ margin: 0 }}>Conecte o número e verifique o envio de mensagens.</p></div>
                 </div>
-                <StatusBadge status={waConnected ? "Conectado" : "Pendente"} />
+                <StatusBadge status={waStatus} />
               </div>
 
-              {waLoading ? <div className="empty-note">Verificando Evolution API...</div> : (
+              {waLoading ? <div className="empty-note" aria-live="polite">Verificando WhatsApp...</div> : !wa ? <div className="form-error" role="alert">Não foi possível consultar o WhatsApp. Tente atualizar o status.</div> : (
                 <>
-                  <div className="integration-field"><label>URL da Evolution</label><code>{wa?.urlConfigured ? "Configurada ✓" : "Falta EVOLUTION_API_URL"}</code></div>
-                  <div className="integration-field"><label>API Key</label><code>{wa?.apiKeyConfigured ? "Configurada no servidor ✓" : "Falta EVOLUTION_API_KEY"}</code></div>
-                  <div className="integration-field"><label>Instância</label><code>{wa?.instanceConfigured ? wa.instance : "Falta EVOLUTION_INSTANCE"}</code></div>
-                  <div className="integration-field"><label>Estado</label><code>{wa?.connection?.state ?? (wa?.configured ? "não foi possível consultar" : "aguardando configuração")}</code></div>
-                  {wa?.connectionError ? <div className="form-error" style={{ marginTop: 10 }}>{wa.connectionError}</div> : null}
+                  <p className="integration-summary">{waStatus === "Conectado" ? "WhatsApp conectado e pronto para mensagens." : waStatus === "Erro" ? "Não foi possível verificar a conexão." : waStatus === "Não configurado" ? "Configure o WhatsApp para habilitar mensagens." : "Aguardando conexão do WhatsApp."}</p>
+                  <details className="technical-details">
+                    <summary>Detalhes técnicos</summary>
+                    <div className="integration-field"><label>URL da Evolution</label><code>{wa.urlConfigured ? "Configurada" : "Falta EVOLUTION_API_URL"}</code></div>
+                    <div className="integration-field"><label>API Key</label><code>{wa.apiKeyConfigured ? "Configurada no servidor" : "Falta EVOLUTION_API_KEY"}</code></div>
+                    <div className="integration-field"><label>Instância</label><code>{wa.instanceConfigured ? wa.instance : "Falta EVOLUTION_INSTANCE"}</code></div>
+                    <div className="integration-field"><label>Estado da conexão</label><code>{wa.connection?.state ?? (wa.configured ? "Indisponível" : "Aguardando configuração")}</code></div>
+                  </details>
+                  {wa.connectionError ? <div className="form-error" role="alert" style={{ marginTop: 10 }}>Não foi possível consultar a conexão agora.</div> : null}
                   <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
                     <button className="button primary" disabled={!wa?.configured || waAction || waConnected} onClick={() => void connectWhatsApp()}>{waAction ? "Aguarde..." : waConnected ? "WhatsApp conectado" : "Gerar QR / conectar"}</button>
                     <button className="button secondary" disabled={waAction} onClick={() => void loadWhatsApp()}><RefreshCw size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Atualizar status</button>
                   </div>
                   {qr ? <div style={{ marginTop: 16, padding: 14, border: "1px solid #dbe3ef", borderRadius: 12, background: "#fff", width: "fit-content" }}><img src={qr} alt="QR Code para conectar WhatsApp" style={{ display: "block", width: 220, height: 220, objectFit: "contain" }} /></div> : null}
-                  {waMessage ? <div className={waMessage.toLowerCase().includes("falha") || waMessage.toLowerCase().includes("não") || waMessage.toLowerCase().includes("invál") ? "form-error" : "form-success"} style={{ marginTop: 12 }}>{waMessage}</div> : null}
+                  {waMessage ? <div className={waMessage.toLowerCase().includes("falha") || waMessage.toLowerCase().includes("não") || waMessage.toLowerCase().includes("invál") ? "form-error" : "form-success"} role={waMessage.toLowerCase().includes("falha") ? "alert" : "status"} style={{ marginTop: 12 }}>{waMessage}</div> : null}
                 </>
               )}
             </div>

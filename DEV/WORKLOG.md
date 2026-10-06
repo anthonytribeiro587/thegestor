@@ -34,3 +34,11 @@
 - Migration: `20261006160000_operational_filters.sql` adiciona RPCs paginadas versionadas, com validação ADMIN/tenant, preservando as RPCs atuais durante rollout; sem alteração de dados.
 - Verified: lint passou; 29 testes em 7 arquivos passaram; build passou com 26 páginas; `git diff --check` passou.
 - Limits: Playwright/browser e ferramentas PostgreSQL/Supabase não estão disponíveis; captura visual e execução da migration em staging ficam pendentes.
+
+## 2026-10-06 — Acabamento final UX/UI
+
+- Scope: polimento localizado preservando identidade navy/azul e densidade de SaaS/ERP.
+- Changed: cobranças deixam ações de pagamento/renovação claramente indisponíveis durante outra gravação, feedback de erro é anunciado e os botões usam rótulos mais claros; configurações mantêm apenas atalhos curtos; planos orientam a criação inicial; integrações mostram status simples e recolhem nomes de variáveis/configuração em detalhes técnicos; foco e alvos mobile foram reforçados.
+- Bug corrigido: a carga inicial de Automações agora aborta após 15 segundos, apresenta erro acessível e oferece nova tentativa, evitando “Carregando automações...” preso. Lista vazia só aparece após resposta válida.
+- Verified: `npm run lint`, `npm test` (29/29), `npm run build` (26 rotas), `git diff --check` passaram.
+- Limits: Playwright e navegador indisponíveis; falta inspeção visual em Preview nos tamanhos 390, 768, 1280 e 1440 px e fluxo com usuários ADMIN/OPERATOR. Nenhuma migration criada.

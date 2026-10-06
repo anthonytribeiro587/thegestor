@@ -6,11 +6,12 @@ Transformar o TheGestor de uma aplicação operacional funcional em um SaaS repl
 
 ## Current Focus
 
-Consolidar a base do produto e priorizar funcionalidades que removam dependência de operação manual antes de adicionar integrações financeiras mais complexas. Nesta tarefa, completar a exclusão segura de clientes.
+Consolidar a base do produto e concluir o acabamento de UX/UI nas telas operacionais, preservando identidade, densidade, responsividade e fluxos existentes. Exclusão segura de clientes já está implementada; a validação visual em Preview segue pendente.
 
 ## In Scope
 
 - UX/UI e fluxos essenciais;
+- consistência visual, densidade, acessibilidade básica e responsividade das telas principais;
 - CRUD completo de clientes;
 - exclusão definitiva de clientes sem histórico financeiro, com RPC ADMIN-only, auditoria e preservação/cancelamento dos clientes com recebimentos;
 - planos/preços configuráveis;
@@ -48,4 +49,4 @@ npm run build
 
 - State: active
 - Owner: project
-- Last updated: 2026-09-30
+- Last updated: 2026-10-06

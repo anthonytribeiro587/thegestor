@@ -64,3 +64,20 @@ O build inicial de baseline falhou ao prerenderizar `/dashboard` sem credenciais
 ### Próxima validação
 
 Aplicar `20261006160000_operational_filters.sql` em staging e revisar os filtros e larguras nas telas Clientes/Cobranças em 390, 768, 1280 e 1440 px, com sessão ADMIN e checagem de acesso OPERATOR.
+
+## Acabamento final UX/UI — 2026-10-06
+
+### Checks executados
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; 26 rotas geradas.
+- `git diff --check` — passou.
+- Revisão estática das telas Dashboard, Clientes, Cobranças, Planos, Automações, Integrações e Configurações, componentes de drawer e breakpoints CSS.
+- Nenhuma migration criada; regra financeira não foi alterada.
+
+### Limites e verificação pendente
+
+- Playwright e binário de navegador não estão disponíveis; não foi possível capturar ou inspecionar telas do Preview.
+- Em Preview, validar visualmente 390, 768, 1280 e 1440 px, incluindo Cobranças, drawers de Clientes/Cobranças/Planos/Automações e estados de integração.
+- Validar as ações com ADMIN e confirmar que OPERATOR não acessa informação financeira protegida.

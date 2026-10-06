@@ -349,7 +349,7 @@ export default function ChargesPage() {
 
           {notice ? <div className="form-success" role="status" style={{ margin: 14 }}>{notice}</div> : null}
           {planError ? <div className={styles.filterError} role="status">{planError}</div> : null}
-          {error ? <div className={styles.empty}>{error} <button className="text-link" onClick={() => void loadData()}>Tentar novamente</button></div> : null}
+          {error ? <div className={styles.empty} role="alert">{error} <button className="text-link" onClick={() => void loadData()}>Tentar novamente</button></div> : null}
           {loading ? <div className={styles.loadingList} aria-label="Carregando cobranças" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <div className={styles.loadingRow} key={index}><span /><span /><span /></div>)}</div> : null}
 
           {!loading && !error && visible.length ? (
@@ -372,16 +372,16 @@ export default function ChargesPage() {
                   </div>
                   <div className={styles.actionCell}>
                     {charge.balance > 0 ? (
-                      <button className="button primary small" disabled={quickPayingId === charge.id} onClick={() => void quickPay(charge)}>
-                        {quickPayingId === charge.id ? "Salvando..." : "Pago"}
+                      <button className="button primary small" disabled={Boolean(quickPayingId || savingTaskId)} onClick={() => void quickPay(charge)}>
+                        {quickPayingId === charge.id ? "Salvando..." : "Marcar pago"}
                       </button>
                     ) : null}
                     {charge.balance === 0 && charge.taskId ? (
-                      <button className="button primary small" disabled={savingTaskId === charge.taskId} onClick={() => void completeTask(charge)}>
+                      <button className="button primary small" disabled={Boolean(savingTaskId || quickPayingId)} onClick={() => void completeTask(charge)}>
                         {savingTaskId === charge.taskId ? "Salvando..." : taskActionLabel(charge.taskType)}
                       </button>
                     ) : null}
-                    <button className="button ghost small" onClick={() => setSelectedChargeId(charge.id)}>{charge.balance > 0 || charge.taskId ? "Ver" : "Detalhes"}</button>
+                    <button className="button ghost small" aria-label={`Ver detalhes de ${charge.client}`} onClick={() => setSelectedChargeId(charge.id)}>Detalhes</button>
                   </div>
                 </div>
               ))}

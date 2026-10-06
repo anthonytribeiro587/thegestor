@@ -109,15 +109,20 @@ export default function AutomationsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch("/api/automacoes", { cache: "no-store" });
+      const response = await fetch("/api/automacoes", { cache: "no-store", signal: controller.signal });
       const payload = await response.json() as Payload;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Não foi possível carregar as automações.");
       setData(payload);
       setDailyLimit(payload.settings.dailyLimit);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar as automações.");
+      setError(cause instanceof Error && cause.name === "AbortError"
+        ? "A consulta demorou mais que o esperado. Tente carregar novamente."
+        : cause instanceof Error ? cause.message : "Não foi possível carregar as automações.");
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
@@ -267,8 +272,8 @@ export default function AutomationsPage() {
         <StatCard title="Últimos envios" value={String(sentCount)} helper="nas 20 mensagens recentes" icon={Bot} tone="slate" />
       </section>
 
-      {error ? <div className="form-error" style={{ marginBottom: 14 }}>{error}</div> : null}
-      {notice ? <div className="form-success" style={{ marginBottom: 14 }}>{notice}</div> : null}
+      {error ? <div className="form-error" role="alert" style={{ marginBottom: 14 }}>{error}{!loading ? <> <button className="text-link" onClick={() => void load()}>Tentar novamente</button></> : null}</div> : null}
+      {notice ? <div className="form-success" role="status" style={{ marginBottom: 14 }}>{notice}</div> : null}
 
       <section className={`card ${styles.masterCard}`}>
         <div>
@@ -289,9 +294,9 @@ export default function AutomationsPage() {
         <div><h2>Regras de mensagem</h2><p>Você pode ter várias regras para o mesmo momento, como 7 dias antes e 1 dia antes.</p></div>
       </div>
 
-      {loading ? <div className="card"><div className="empty-note">Carregando automações...</div></div> : null}
+      {loading ? <div className="card" aria-live="polite" aria-busy="true"><div className="empty-note">Carregando automações...</div></div> : null}
 
-      {!loading ? (
+      {!loading && data ? (
         <section className={styles.automationGrid}>
           {orderedAutomations.map((item) => (
             <article className={styles.automationCard} key={item.id}>
@@ -307,8 +312,8 @@ export default function AutomationsPage() {
               </div>
               <div className={styles.cardActions}>
                 <button className="button secondary small" disabled={busy} onClick={() => void toggleAutomation(item)}>{item.ativo ? "Pausar" : "Ativar"}</button>
-                <button className="square-action" title="Editar" onClick={() => openEdit(item)}><Pencil size={14} /></button>
-                <button className="square-action" title="Excluir" disabled={busy} onClick={() => void removeAutomation(item)}><Trash2 size={14} /></button>
+                <button className="square-action" aria-label={`Editar ${item.nome}`} title="Editar" disabled={busy} onClick={() => openEdit(item)}><Pencil size={14} /></button>
+                <button className="square-action" aria-label={`Excluir ${item.nome}`} title="Excluir" disabled={busy} onClick={() => void removeAutomation(item)}><Trash2 size={14} /></button>
               </div>
             </article>
           ))}
@@ -345,7 +350,7 @@ export default function AutomationsPage() {
         <aside className="drawer" role="dialog" aria-modal="true" aria-label={editing ? "Editar automação" : "Nova automação"}>
           <div className="drawer-header">
             <div><h2>{editing ? "Editar automação" : "Nova automação"}</h2><p>Defina quando e o que o TheGestor deve enviar.</p></div>
-            <button className="icon-button" disabled={busy} onClick={() => setDrawerOpen(false)}><X size={20} /></button>
+            <button className="icon-button" aria-label="Fechar" disabled={busy} onClick={() => setDrawerOpen(false)}><X size={20} /></button>
           </div>
 
           <form className="form-stack" onSubmit={saveAutomation}>

@@ -1,6 +1,6 @@
 import type { ChargeStatus, ClientStatus } from "@/lib/types";
 
-type Status = ChargeStatus | ClientStatus | "Conectado" | "Desconectado" | "Pendente";
+type Status = ChargeStatus | ClientStatus | "Conectado" | "Desconectado" | "Pendente" | "Erro" | "Não configurado";
 
 export function StatusBadge({ status }: { status: Status }) {
   const key = status.toLowerCase().replaceAll(" ", "-");
