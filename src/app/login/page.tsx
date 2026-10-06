@@ -17,6 +17,7 @@ export default function LoginPage() {
       </section>
       <section className="auth-form-panel">
         <div className="auth-card">
+          <div className="auth-logo auth-logo-mobile"><span className="brand-mark"><CreditCard size={20} /></span>thegestor</div>
           <div className="auth-tabs"><Link className="active" href="/login">Entrar</Link><Link href="/cadastro">Criar conta</Link></div>
           <LoginForm />
           <p className="auth-note">Ainda não tem conta? <Link href="/cadastro">Criar conta</Link></p>

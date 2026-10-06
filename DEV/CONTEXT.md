@@ -31,6 +31,7 @@
 
 ## Next Context
 
+- Revisão mobile-first do frontend implementada na branch `feat/finalizacao-saas`; QA Chromium público passou em 390, 430, 768, 1280 e 1440px. QA autenticado ADMIN/OPERATOR continua pendente porque este ambiente não tem sessão nem configuração Supabase.
 - Priorizar funcionalidades que transformem o sistema em produto replicável.
 - Exclusão segura de clientes está implementada no código, mas depende da migration `20261006170000_secure_client_deletion.sql` e validação pgTAP em Supabase local/staging.
 - Evitar customização excessivamente específica de um único cliente.

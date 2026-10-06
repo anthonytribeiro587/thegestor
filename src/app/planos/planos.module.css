@@ -3,3 +3,10 @@
 .emptyState b{display:block;color:var(--text);font-size:14px}
 .emptyState p{margin:5px 0 0;color:var(--muted);font-size:12px}
 @media(max-width:560px){.emptyState{align-items:stretch;flex-direction:column}.emptyState .button{justify-content:center}}
+@media(max-width:768px){
+  .planList{gap:10px}.planMain{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px}
+  .planTitle h2{font-size:17px}.planInfo p{font-size:14px}.planInfo>small,.priceBlock small,.priceBlock>span{font-size:13px}
+  .priceBlock{gap:3px;padding:12px;border-radius:9px;background:#f7f9fc}.priceBlock strong{font-size:21px}
+  .actions{grid-column:1;grid-row:auto;flex-direction:row;justify-content:flex-start;flex-wrap:wrap;gap:8px}
+  .history{padding:14px}.history>b{font-size:14px}.historyRow{font-size:14px}.historyRow small,.historyEmpty{font-size:13px}
+}

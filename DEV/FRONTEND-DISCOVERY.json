@@ -18,7 +18,7 @@
       "Existing navy and blue tokens, light cards, compact table patterns, and local components are already used across the product.",
       "The user explicitly requested preserving the existing visual identity and avoiding a redesign."
     ],
-    "resolution": "The discovery script reported ambiguous local component imports; resolved to the existing local CSS/component system under the maestro's explicit instruction to preserve product identity. No external component library introduced."
+    "resolution": "The discovery script reported ambiguous local component imports; resolved to the existing local CSS/component system under the maestro's explicit instruction to preserve product identity. Responsive mobile compositions use the same local tokens and CSS modules; no external component library introduced."
   },
   "designProfile": {
     "identity": "Corporate SaaS/ERP, dark navy navigation, blue actions, light cards",
@@ -28,10 +28,10 @@
       "card": "#ffffff",
       "background": "#f6f8fb"
     },
-    "density": "Compact desktop layouts; comfortable touch targets on mobile"
+    "density": "Compact desktop layouts; dedicated mobile layouts through 768px, two-column KPIs, comfortable touch targets and readable operational copy"
   },
   "baselineCapture": {
-    "status": "unavailable",
-    "reason": "Playwright is not installed in the workspace; the visual QA harness emitted ENVIRONMENT_LIMITATION before edits. No browser binary was available for a replacement capture."
+    "status": "captured",
+    "reason": "Baseline public screenshots from the prior QA were available in .qa/screenshots. Post-change Chromium full-page screenshots and interactive filter/menu states are in .qa/screenshots/mobile-review/."
   }
 }

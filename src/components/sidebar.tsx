@@ -19,7 +19,7 @@ const operatorItems = [
   { href: "/operador", label: "Painel operacional", icon: BarChart3 },
 ];
 
-export function Sidebar({ role = "Administrador" }: { role?: "Administrador" | "Operador" }) {
+export function Sidebar({ role = "Administrador", onNavigate }: { role?: "Administrador" | "Operador"; onNavigate?: () => void }) {
   const pathname = usePathname();
   const items = role === "Operador" ? operatorItems : adminItems;
 
@@ -32,7 +32,7 @@ export function Sidebar({ role = "Administrador" }: { role?: "Administrador" | "
       <nav className="sidebar-nav">
         {items.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
-          return <Link key={href} href={href} className={active ? "active" : ""}><Icon size={19} /><span>{label}</span></Link>;
+          return <Link key={href} href={href} className={active ? "active" : ""} onClick={onNavigate}><Icon size={19} /><span>{label}</span></Link>;
         })}
       </nav>
       <div className="sidebar-footer">

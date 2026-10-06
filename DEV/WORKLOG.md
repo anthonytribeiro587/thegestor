@@ -58,3 +58,12 @@
 - Verified: Chromium 153 / Playwright 1.63; Preview base commit `c572face`; 12 páginas/viewports passaram sem overflow, erro de console/hydration ou request falha. Após correção, build local repetiu 12 combinações e o contraste subiu a 4,76:1. Interações públicas, validação HTML e foco passaram. Lint, Vitest 29/29, build 26 rotas e diff check passaram.
 - Limits: áreas autenticadas bloqueadas sem usuário QA ADMIN/OPERATOR; migrations/PgTAP ainda dependem de staging. `next dev` mostrou mismatch de `caret-color` em cinco navegações, ausente no Preview e build local de produção; acompanhar se reaparecer fora de dev. Novo Preview é necessário para verificar o CSS corrigido no deployment.
 - Next: obter contas isoladas de QA e validar páginas operacionais, isolamento por perfil e migrations em staging antes de aprovar para main.
+
+## 2026-10-06 — Revisão mobile-first do produto
+
+- Scope: corrigir layouts móveis em todas as superfícies, preservando desktop, identidade local, fluxos, papéis e consultas server-side.
+- Changed: drawer mobile com fechamento por Escape/backdrop; header compacto; KPIs em 2 colunas; filtros e ordenação em bottom sheets; vencimento em grade de dias; cards responsivos de clientes/cobranças; ajustes em dashboard, planos, automações, integrações, configurações, login, cadastro, landing, tabelas, drawers e modais; favicon SVG da marca.
+- Verified: lint e build passaram; Vitest 29/29; build gerou 27 rotas; diff check passou. Chromium `153.0.8010.12`/Playwright `1.63.0`: 15/15 combinações públicas passaram nos 5 viewports. Smoke de menu, filtro, vencimento e sort passou em 390px. Nenhum erro de console/rede/overflow nas páginas públicas.
+- Limits: sem sessão ADMIN/OPERATOR e sem ambiente Supabase local; dados operacionais, drawers de detalhe/edição e ações de cobrança não foram validados com dados. `/inicio` não existe como rota; o Dashboard usa `/dashboard`.
+- Next: executar o QA autenticado descrito em `DEV/QA-FINAL.md` com contas isoladas e conferir no Preview; commit solicitado criado na branch, sem push/merge.
+- Refinement: mensagens longas de automação ficam resumidas no card mobile com controle “Visualizar mensagem completa”; tabela de logs usa cartões legíveis em mobile.

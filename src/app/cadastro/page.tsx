@@ -17,6 +17,7 @@ export default function RegisterPage() {
       </section>
       <section className="auth-form-panel">
         <div className="auth-card">
+          <div className="auth-logo auth-logo-mobile"><span className="brand-mark"><CreditCard size={20} /></span>thegestor</div>
           <div className="auth-tabs"><Link href="/login">Entrar</Link><Link className="active" href="/cadastro">Criar conta</Link></div>
           <RegisterForm />
           <p className="auth-note">Já tem conta? <Link href="/login">Entrar</Link></p>

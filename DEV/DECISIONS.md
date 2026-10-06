@@ -42,3 +42,13 @@
 - Alternativas: ordenar no navegador (carregaria páginas incompletas e resultados inconsistentes); adicionar coluna duplicada de estado (cria sincronização e migração de dados); substituir as RPCs atuais e quebrar clientes antigos.
 - Consequências: migration aditiva `20261006180000_operational_sort_and_renewal_filter.sql`, sem alteração de dados nem das RPCs antigas; `SECURITY INVOKER`, validação ADMIN/tenant e grants autenticados preservados; UI atual passa a chamar as novas RPCs.
 - Verificação: lint, Vitest, build e diff check; PgTAP e inspeção visual ainda dependem de PostgreSQL/Supabase local ou staging e Chromium/Preview.
+
+## 2026-10-06 — Composição mobile-first do produto
+
+- Status: aceita para esta branch
+- Contexto: a QA encontrou telas administrativas comprimidas em larguras móveis, com filtros empilhados, texto operacional pequeno e listas difíceis de percorrer. O design system local navy/azul já é usado pelo produto; o desktop precisa permanecer preservado.
+- Decisão: manter a composição atual acima de 768px e oferecer composição mobile dedicada até 768px: navegação em drawer, indicadores em duas colunas, filtros/ordenação em bottom sheets, listas operacionais em cards, formulários em uma coluna e drawers em tela cheia. A ordenação mobile atualiza os mesmos estados e RPCs server-side.
+- Alternativas: comprimir o desktop; ocultar colunas/ações importantes; introduzir biblioteca visual externa.
+- Consequências: CSS responsivo concentrado em breakpoints compartilhados e módulos das telas; filtros e ações existentes são preservados; nenhum fluxo financeiro, API, RPC, migration ou política de acesso foi alterado.
+- Limites: rotas operacionais dependem de sessão e variáveis Supabase para QA visual com dados; nenhuma sessão ADMIN/OPERATOR estava disponível nesta rodada.
+- Verificação: lint, Vitest, build, Chromium em `/`, `/login`, `/cadastro` nos cinco viewports e smoke de navegação/filtros/ordenação em 390px; detalhes em `DEV/QA-FINAL.md`.

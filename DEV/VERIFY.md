@@ -115,3 +115,14 @@ Aplicar a migration nova em staging, executar `supabase/tests/operational_sort_a
 - Playwright e binário de navegador não estão disponíveis; não foi possível capturar ou inspecionar telas do Preview.
 - Em Preview, validar visualmente 390, 768, 1280 e 1440 px, incluindo Cobranças, drawers de Clientes/Cobranças/Planos/Automações e estados de integração.
 - Validar as ações com ADMIN e confirmar que OPERATOR não acessa informação financeira protegida.
+
+## Revisão mobile-first — 2026-10-06
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; 27 rotas Next.js geradas.
+- `git diff --check` — passou.
+- Chromium/Playwright: `/`, `/login`, `/cadastro` em 390x844, 430x932, 768x1024, 1280x800 e 1440x900: 15/15 HTTP 200, sem overflow horizontal, elementos visíveis fora do viewport ou erros de console/rede.
+- Smoke 390px: menu lateral fecha por Escape e backdrop; filtros, vencimento (1–31), ordenação, aplicar/fechar funcionam em Clientes e Cobranças.
+- Screenshot evidence: `.qa/screenshots/mobile-review/` (22 PNGs); dados detalhados em `results.json` e `interaction-checks.json`.
+- Pendente/WARN: QA de dados e drawers internos com ADMIN/OPERATOR, indisponíveis sem sessão/configuração Supabase. A rota exibida como “Início” é `/dashboard`; `/inicio` retorna 404.

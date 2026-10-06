@@ -5,7 +5,7 @@
 - Updated: 2026-10-06
 - Branch: `feat/finalizacao-saas`
 - Project: TheGestor
-- State: landing pública, filtros/tabelas e ordenação implementados; QA público Chromium concluído no Preview atual. QA autenticado ADMIN/OPERATOR e migrations/PgTAP em staging continuam pendentes.
+- State: revisão mobile-first de todo o frontend implementada nesta branch; QA público Chromium passou nos cinco viewports. QA autenticado ADMIN/OPERATOR e migrations/PgTAP em staging continuam pendentes.
 - Orchestration: Orquestrador Maestro V1 beta
 - Read order: `INDEX.md` -> `HANDOFF.md` -> `CONTEXT.md` -> `SPECS/ACTIVE.md`
 - Verification source: `VERIFY.md`
@@ -26,6 +26,9 @@
 - Billing, renovações, créditos, WhatsApp/Evolution e Mercado Pago: implementação existente auditada; a branch acrescenta reservas idempotentes para envio e criação de Pix.
 - Integrações e Automações: removida configuração duplicada da Evolution na tela de Integrações.
 - UX/UI: acabamento final preserva o design navy/azul, inclui foco visível e alvos mobile, simplifica status de integrações e reduz duplicação em Configurações.
+- Mobile: desktop preservado acima de 768px; até 768px há header compacto, drawer lateral, KPIs 2 colunas, folhas de filtro/ordenação, cartões operacionais, ajustes responsivos por tela e formulários/drawers em largura total.
+- QA mobile: `/`, `/login`, `/cadastro` passaram em 390x844, 430x932, 768x1024, 1280x800 e 1440x900; sem overflow/elementos fora do viewport/erros. Evidência em `.qa/screenshots/mobile-review/` e `DEV/QA-FINAL.md`.
+- QA operacional: menu/filtros/vencimento/ordenação foram exercitados em 390px sem dados. Sem sessão nem variáveis Supabase, drawers com dados, ações e separação ADMIN/OPERATOR não foram validados.
 - Automações: requisição inicial limitada a 15 segundos com estado de erro e nova tentativa; mensagem de carregamento não fica presa indefinidamente.
 - Cobranças: ações rápidas comunicam o estado de envio e ficam desabilitadas durante gravação concorrente.
 
@@ -48,4 +51,4 @@
 
 ## Próximo contexto
 
-Aplicar migrations pendentes em staging e executar `supabase/tests/excluir_cliente.test.sql` e `supabase/tests/operational_sort_and_renewal.test.sql`. Obter usuários isolados de QA ADMIN/OPERATOR e completar os fluxos autenticados descritos em `DEV/QA-FINAL.md`, preservando isolamento e proteção financeira.
+Executar QA autenticado descrito em `DEV/QA-FINAL.md` com usuários isolados ADMIN/OPERATOR e dados seguros; validar drawers, listas, ações e proteção financeira no Preview. A tela “Início” usa `/dashboard`; `/inicio` é 404. Depois, aplicar migrations pendentes em staging e executar `supabase/tests/excluir_cliente.test.sql` e `supabase/tests/operational_sort_and_renewal.test.sql`. Nenhum merge/push.

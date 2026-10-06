@@ -131,7 +131,7 @@ export default function SettingsPage() {
           <div className="card">
             <div className="card-header"><h2>Atalhos</h2></div>
             <div className="card-body">
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div className="settings-shortcuts" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <Link className="button secondary" href="/automacoes">Automações</Link>
                 <Link className="button secondary" href="/integracoes">Integrações</Link>
               </div>

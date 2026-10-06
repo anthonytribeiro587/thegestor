@@ -13,3 +13,49 @@
 @media(max-width:1080px){.clientHeader,.clientRow{grid-template-columns:minmax(130px,1.35fr) minmax(80px,.8fr) minmax(75px,.65fr) minmax(125px,1.1fr) minmax(65px,.6fr) minmax(75px,.65fr) 64px;gap:6px;padding-inline:9px}.clientHeader{font-size:8px}}
 @media(max-width:760px){.toolbar{gap:7px;padding:9px}.search{flex-basis:100%;min-width:0}.inlineFilter{flex:1 1 calc(50% - 6px);min-width:0;max-width:none}.resultMeta{margin:3px 0 0 auto}.clientHeader{display:none}.clientRow{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;padding:12px 13px}.clientRow>[data-label]::before{content:attr(data-label);display:block;margin-bottom:3px;color:#8190a4;font-size:8px;font-weight:700}.clientMain{grid-column:1}.clientRow>[data-label="Plano"],.clientRow>[data-label="Vencimento"],.clientRow>[data-label="Créditos"],.clientRow>[data-label="Ciclo"],.clientRow>[data-label="Status"]{grid-column:1}.clientRow>[data-label="Ações"]{grid-column:2;grid-row:1 / span 6;align-self:center}.clientRow>[data-label="Créditos"]{display:grid;justify-items:start;gap:3px}.actions{justify-content:flex-end}.toast{left:12px;right:12px;bottom:16px;text-align:center}}
 @media(max-width:390px){.inlineFilter{flex-basis:100%}.clientRow{font-size:10px}.credits{gap:3px}}
+
+@media(min-width:769px){.filterSheet,.filterSheetBody{display:contents}.filterSheet>summary,.filterBackdrop,.sortSheet{display:none}.mobileApply{display:none!important}}
+@media(max-width:768px){
+  .toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:10px;margin-bottom:12px}
+  .search{grid-column:1/-1;min-height:46px;padding-inline:12px;flex:none}
+  .search input{font-size:16px}
+  .filterSheet{grid-column:1;min-width:0}
+  .filterSheet>summary{display:flex;align-items:center;justify-content:center;min-height:46px;padding:0 16px;border:1px solid #b8d1ff;border-radius:9px;background:var(--blue-soft);color:var(--blue);font-size:14px;font-weight:700;list-style:none;cursor:pointer}
+  .filterSheet>summary::-webkit-details-marker{display:none}
+  .sortSheet{grid-column:2;min-width:0}
+  .sortSheet>summary{display:flex;align-items:center;justify-content:center;min-height:46px;padding:0 16px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text);font-size:14px;font-weight:700;list-style:none;cursor:pointer}
+  .sortSheet>summary::-webkit-details-marker{display:none}
+  .sortSheetBody{position:fixed;z-index:100;inset:auto 0 0;display:grid;gap:12px;padding:18px 16px max(22px,env(safe-area-inset-bottom));border-radius:18px 18px 0 0;background:#fff;box-shadow:0 -16px 45px rgb(3 20 40 / 18%)}
+  .sortSheetBody::before{content:"Ordenar clientes";padding-bottom:10px;border-bottom:1px solid var(--line);font-size:18px;font-weight:750;color:var(--text)}
+  .sortSheetBody .inlineFilter{display:grid;gap:5px}
+  .sortSheetBody .inlineFilter>span:not(.srOnly){font-size:13px;color:#52627a;font-weight:650}
+  .sortSheetBody .inlineFilter select{height:46px;font-size:14px}
+  .sortSheetBody>.button{min-height:46px;font-size:14px}
+  .filterBackdrop{position:fixed;z-index:99;inset:0;display:block;width:100%;height:100dvh;border:0;background:rgb(3 20 40 / 42%)}
+  .filterSheetBody{position:fixed;z-index:100;inset:auto 0 0;max-height:min(82dvh,720px);overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:18px 16px max(22px,env(safe-area-inset-bottom));border-radius:18px 18px 0 0;background:#fff;box-shadow:0 -16px 45px rgb(3 20 40 / 18%)}
+  .filterSheetBody::before{content:"Filtros de clientes";grid-column:1/-1;padding-bottom:10px;border-bottom:1px solid var(--line);font-size:18px;font-weight:750;color:var(--text)}
+  .inlineFilter{min-width:0;max-width:none;width:100%}.inlineFilter select{height:46px;padding:0 11px;font-size:14px}
+  .filterSheetBody :global(.filter-popover-root){min-width:0}
+  .filterSheetBody button.button{min-height:46px;font-size:14px}
+  .mobileApply{grid-column:1/-1}
+  .resultMeta{grid-column:1/-1;margin:0;font-size:13px;white-space:normal}
+  .filterError{font-size:13px}
+  .clientHeader{display:none}
+  .clientRow{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 14px;padding:15px 14px;font-size:14px}
+  .clientRow>[data-label]::before{margin-bottom:4px;color:#64748b;font-size:13px}
+  .clientMain{grid-column:1/-1;gap:10px}
+  .clientText b{font-size:16px;white-space:normal;overflow-wrap:anywhere}
+  .clientText small{font-size:13px;white-space:normal;overflow-wrap:anywhere}
+  .clientRow>[data-label="Plano"]{grid-column:1}
+  .clientRow>[data-label="Vencimento"]{grid-column:2}
+  .clientRow>[data-label="Créditos"]{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap}
+  .clientRow>[data-label="Ciclo"]{grid-column:1}
+  .clientRow>[data-label="Status"]{grid-column:2;align-self:end}
+  .clientRow>[data-label="Ações"]{grid-column:1/-1;grid-row:auto;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid #edf1f6}
+  .creditCycle,.creditUsed,.creditExpected,.renewalPending{min-height:30px;padding-inline:8px;font-size:13px}
+  .pagination{justify-content:space-between;gap:8px;padding:14px 10px;font-size:13px}
+  .pagination .button{min-width:102px}
+  .dayOptions{grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+  .dayOptions button{height:44px;font-size:14px}
+  .dayOptions button:first-child{grid-column:1/-1}
+}

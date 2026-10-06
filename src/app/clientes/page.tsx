@@ -257,6 +257,10 @@ export default function ClientsPage() {
 
       <section className={styles.toolbar} aria-label="Filtros de clientes">
         <label className={styles.search}><Search size={15} /><input aria-label="Buscar por nome, telefone ou e-mail" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." /></label>
+        <details className={styles.filterSheet} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; } }}>
+          <summary>Filtros ({Number(statusFilter !== "Todos" || filter !== "Todos") + Number(Boolean(planId)) + Number(dayFilter !== "all") + Number(creditFilter !== "Todos")})</summary>
+          <button className={styles.filterBackdrop} aria-label="Fechar filtros" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }} />
+          <div className={styles.filterSheetBody}>
         <label className={styles.inlineFilter}><span className={styles.srOnly}>Status</span><select value={filter === "Vencidos" ? "Vencidos" : filter === "Revisar ciclos" ? "Revisar ciclos" : statusFilter} onChange={(event) => { setPage(1); if (event.target.value === "Vencidos" || event.target.value === "Revisar ciclos") { setStatusFilter("Todos"); setFilter(event.target.value); } else { setFilter("Todos"); setStatusFilter(event.target.value as ClientStatusFilter); } }}><option value="Todos">Status: Todos</option><option value="Ativos">Ativos</option><option value="Cancelados">Cancelados</option><option value="Vencidos">Vencidos</option><option value="Revisar ciclos">Revisar ciclo</option></select></label>
         <label className={styles.inlineFilter}><span className={styles.srOnly}>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Plano: Todos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
         <FilterPopover label={dayFilter === "all" ? "Vencimento: Todos" : `Vencimento: dia ${dayFilter}`} active={dayFilter !== "all"}>
@@ -264,8 +268,20 @@ export default function ClientsPage() {
         </FilterPopover>
         <label className={styles.inlineFilter}><span className={styles.srOnly}>Créditos</span><select value={creditFilter} onChange={(event) => { setPage(1); setCreditFilter(event.target.value as CreditFilter); }}><option>Todos</option><option>Com créditos previstos</option><option>Sem créditos previstos</option></select></label>
         <button className="button secondary small" onClick={clearFilters} disabled={statusFilter === "Todos" && filter === "Todos" && !query && !hasExtraFilters && dayFilter === "all"}>Limpar</button>
+        <button className={`button primary ${styles.mobileApply}`} type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }}>Aplicar filtros</button>
         <span className={styles.resultMeta}>{total} cliente(s) · página {page} de {totalPages}</span>
         {planError ? <span className={styles.filterError} role="status">{planError}</span> : null}
+          </div>
+        </details>
+        <details className={styles.sortSheet} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; } }}>
+          <summary>Ordenar</summary>
+          <button className={styles.filterBackdrop} aria-label="Fechar ordenação" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }} />
+          <div className={styles.sortSheetBody}>
+            <label className={styles.inlineFilter}><span>Ordenar por</span><select aria-label="Ordenar clientes por" value={sort} onChange={(event) => { setPage(1); setSort(event.target.value as ClientSort); }}><option value="cliente">Nome</option><option value="plano">Plano</option><option value="vencimento">Vencimento</option><option value="creditos">Créditos</option><option value="ciclo">Ciclo</option><option value="status">Status</option></select></label>
+            <label className={styles.inlineFilter}><span>Direção</span><select aria-label="Direção da ordenação" value={direction} onChange={(event) => { setPage(1); setDirection(event.target.value as "asc" | "desc"); }}><option value="asc">Crescente</option><option value="desc">Decrescente</option></select></label>
+            <button className="button primary" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }}>Aplicar ordenação</button>
+          </div>
+        </details>
       </section>
 
       {error ? <div className="card"><div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div></div> : null}

@@ -306,6 +306,10 @@ export default function AutomationsPage() {
                 <StatusBadge status={item.ativo ? "Conectado" : "Pendente"} />
               </div>
               <div className={styles.messagePreview}>{previewTemplate(item.mensagem)}</div>
+              <details className={styles.messageDetails}>
+                <summary>Visualizar mensagem completa</summary>
+                <div>{previewTemplate(item.mensagem)}</div>
+              </details>
               <div className={styles.tags}>
                 <span>WhatsApp</span>
                 <span>{item.incluir_pagamento ? "Com link de pagamento" : "Sem link de pagamento"}</span>
@@ -332,12 +336,12 @@ export default function AutomationsPage() {
               <thead><tr><th>Cliente</th><th>Automação</th><th>Telefone</th><th>Status</th><th>Data</th><th>Erro</th></tr></thead>
               <tbody>{data.recentMessages.map((item) => (
                 <tr key={item.id}>
-                  <td>{first(item.clientes)?.nome ?? "Cliente"}</td>
-                  <td>{first(item.automacoes_mensagem)?.nome ?? item.tipo.replaceAll("_", " ")}</td>
-                  <td>{item.telefone ?? "—"}</td>
-                  <td><StatusBadge status={messageStatus(item.status)} /></td>
-                  <td>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.enviada_em ?? item.criado_em))}</td>
-                  <td>{item.erro ?? "—"}</td>
+                  <td data-label="Cliente">{first(item.clientes)?.nome ?? "Cliente"}</td>
+                  <td data-label="Automação">{first(item.automacoes_mensagem)?.nome ?? item.tipo.replaceAll("_", " ")}</td>
+                  <td data-label="Telefone">{item.telefone ?? "—"}</td>
+                  <td data-label="Status"><StatusBadge status={messageStatus(item.status)} /></td>
+                  <td data-label="Data">{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.enviada_em ?? item.criado_em))}</td>
+                  <td data-label="Erro">{item.erro ?? "—"}</td>
                 </tr>
               ))}</tbody>
             </table>

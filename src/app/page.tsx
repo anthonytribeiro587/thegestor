@@ -41,7 +41,7 @@ export default function Home() {
       <section className={styles.hero}>
         <div className={styles.heroCopy}>
           <span className={styles.eyebrow}>Gestão de cobranças recorrentes</span>
-          <h1>Controle clientes, cobranças e renovações sem depender de planilhas.</h1>
+          <h1><span className={styles.desktopHeadline}>Controle clientes, cobranças e renovações sem depender de planilhas.</span><span className={styles.mobileHeadline}>Clientes e cobranças organizados, sem planilhas.</span></h1>
           <p>Centralize vencimentos, pagamentos, planos, créditos e automações em uma operação simples.</p>
           <div className={styles.heroActions}><Link className={styles.primaryButton} href="/cadastro">Começar agora <ArrowRight size={16} /></Link><Link className={styles.secondaryButton} href="/login">Já tenho conta</Link></div>
           <div className={styles.heroNote}><Check size={15} /> Organize o que sua operação já precisa acompanhar</div>

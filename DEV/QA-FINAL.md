@@ -46,3 +46,47 @@
 ## Conclusão
 
 **NOT READY FOR MAIN.** A auditoria pública em Chromium passou no Preview original e foi repetida no build local de produção após a correção de contraste; os gates de código passaram. Bloqueadores para aprovação global: falta QA autenticado com usuários de teste ADMIN/OPERADOR e validar migrations/PgTAP em staging. O CSS corrigido aguarda novo Preview. Não foi feito merge na `main`.
+
+## MOBILE QA — 2026-10-06
+
+### Ambiente e resultados
+
+- Build: produção local (`npm run build`), sem dados de cliente.
+- Browser: Chromium for Testing `153.0.8010.12`; Playwright `1.63.0`.
+- Viewports: `390x844`, `430x932`, `768x1024`, `1280x800`, `1440x900`.
+- Páginas públicas: `/`, `/login`, `/cadastro`, 15 combinações no total.
+- Nas 15 combinações: HTTP 200, `scrollWidth` igual à largura do viewport, nenhum elemento visível fora dos limites, sem erro de console ou resposta de rede 4xx/5xx.
+- Inspeção visual em 390px: landing com headline reduzida a três linhas, CTAs largos e seções em coluna; login/cadastro mostram logo e formulário imediatamente; os indicadores das telas operacionais usam duas colunas.
+- Menu mobile da landing abriu em `390`, `430` e `768px`.
+- Drawer de navegação em Clientes: largura de 320px em viewport 390; lista Início, Clientes, Cobranças, Planos, Automações, Integrações e Configurações; fechou por Escape e backdrop.
+- Filtros de Clientes em 390px: busca fora da folha; filtros e ordenação lado a lado; seletor de vencimento mostrou “Todos” e dias 1–31; seleção do dia 1 e fechamento em “Aplicar filtros” passaram. Ordenação Cliente/decrescente atualizou os estados existentes e fechou em “Aplicar ordenação”.
+- Filtros de Cobranças em 390px: busca em largura total; filtros e ordenação lado a lado; seletor de vencimento mostrou “Todos” e dias 1–31; Escape e backdrop fecharam a folha; ordenação abriu corretamente.
+- Automações: mensagens longas ficam resumidas em mobile e têm controle explícito “Visualizar mensagem completa”.
+- Screenshots full page e estados de menu/filtros: `.qa/screenshots/mobile-review/` (22 PNGs). Evidência numérica: `results.json` e `interaction-checks.json` na mesma pasta.
+- `/dashboard` é a rota existente para a página “Início”. A rota literal `/inicio` retornou 404.
+
+### Resultado por viewport
+
+| Viewport | Público (`/`, `/login`, `/cadastro`) | Operacional autenticado |
+|---|---|---|
+| 390x844 | PASS — 3/3; sem overflow | WARN — sem sessão ADMIN/OPERATOR ou variáveis Supabase |
+| 430x932 | PASS — 3/3; sem overflow | WARN — sem sessão ADMIN/OPERATOR ou variáveis Supabase |
+| 768x1024 | PASS — 3/3; sem overflow | WARN — sem sessão ADMIN/OPERATOR ou variáveis Supabase |
+| 1280x800 | PASS — 3/3; sem overflow | WARN — sem sessão ADMIN/OPERATOR ou variáveis Supabase |
+| 1440x900 | PASS — 3/3; sem overflow | WARN — sem sessão ADMIN/OPERATOR ou variáveis Supabase |
+
+### Limites
+
+- Este ambiente não possui `NEXT_PUBLIC_SUPABASE_URL` nem chave publicável configurada e não oferece sessão QA. As rotas operacionais retornam a estrutura visual sem dados reais, mas telas internas, cards com clientes/cobranças, drawers de detalhes/edição e ações financeiras não foram validados com uma conta autenticada.
+- Nenhum cliente, pagamento, renovação ou integração foi alterado. A separação ADMIN/OPERATOR permanece sem validação de browser nesta rodada.
+- O teste público cobre os cinco viewports; o WARN operacional aplica-se aos cinco até a execução com usuários de QA isolados. `/inicio` precisa ser tratado como `/dashboard` no próximo roteiro autenticado.
+
+### Gates desta revisão
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; 27 rotas geradas.
+- `git diff --check` — passou.
+- Nenhuma migration, regra financeira, API, RPC, dado ou configuração de papel foi alterada.
+
+**Conclusão MOBILE:** código e QA público aprovados; QA autenticado permanece WARN e é necessário antes da aprovação global. Nenhum merge na `main`.

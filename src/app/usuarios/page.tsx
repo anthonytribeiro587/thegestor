@@ -225,13 +225,13 @@ export default function UsersPage() {
               <tbody>
                 {members.map((member) => (
                   <tr key={member.vinculo_id}>
-                    <td>{member.nome_exibicao}{member.e_usuario_atual ? " (você)" : ""}</td>
-                    <td>{member.email}</td>
-                    <td>{roleLabel(member.papel)}</td>
-                    <td>{accessLabel(member.papel)}</td>
-                    <td>{formatDateTime(member.ultimo_login_em)}</td>
-                    <td><span className={`status-badge ${member.ativo ? "status-ativo" : "status-desconectado"}`}>{member.ativo ? "Ativo" : "Inativo"}</span></td>
-                    <td>
+                    <td data-label="Usuário">{member.nome_exibicao}{member.e_usuario_atual ? " (você)" : ""}</td>
+                    <td data-label="E-mail">{member.email}</td>
+                    <td data-label="Perfil">{roleLabel(member.papel)}</td>
+                    <td data-label="Permissão">{accessLabel(member.papel)}</td>
+                    <td data-label="Último acesso">{formatDateTime(member.ultimo_login_em)}</td>
+                    <td data-label="Status"><span className={`status-badge ${member.ativo ? "status-ativo" : "status-desconectado"}`}>{member.ativo ? "Ativo" : "Inativo"}</span></td>
+                    <td data-label="Ações">
                       <button
                         className="button ghost small"
                         disabled={member.e_usuario_atual}
@@ -255,7 +255,7 @@ export default function UsersPage() {
           <div className="table-wrap">
             <table className="admin-table">
               <thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Criado em</th><th>Expira em</th></tr></thead>
-              <tbody>{invites.map((invite) => <tr key={invite.id}><td>{invite.nome_exibicao || "—"}</td><td>{invite.email}</td><td>{roleLabel(invite.papel)}</td><td>{formatDateTime(invite.criado_em)}</td><td>{formatDateTime(invite.expira_em)}</td></tr>)}</tbody>
+              <tbody>{invites.map((invite) => <tr key={invite.id}><td data-label="Nome">{invite.nome_exibicao || "—"}</td><td data-label="E-mail">{invite.email}</td><td data-label="Perfil">{roleLabel(invite.papel)}</td><td data-label="Criado em">{formatDateTime(invite.criado_em)}</td><td data-label="Expira em">{formatDateTime(invite.expira_em)}</td></tr>)}</tbody>
             </table>
           </div>
         </section>

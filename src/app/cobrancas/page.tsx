@@ -350,14 +350,33 @@ export default function ChargesPage() {
               <Search size={16} />
               <input aria-label="Buscar por cliente" value={query} onChange={(event) => updateQuery(event.target.value)} placeholder="Buscar cliente..." />
             </label>
+            <details className={styles.filterSheet} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; } }}>
+              <summary>Filtros ({Number(tab !== "Precisa de ação") + Number(renewalFilter !== "Todas") + Number(Boolean(planId)) + Number(Boolean(dueFrom || dueTo || dueDay)) + Number(financialStatus !== "Todas")})</summary>
+              <button className={styles.filterBackdrop} aria-label="Fechar filtros" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }} />
+              <div className={styles.filterSheetBody}>
             <label className={styles.inlineFilter}><span className={styles.srOnly}>Status</span><select value={tab} onChange={(event) => { setPage(1); setTab(event.target.value as Tab); }}>{pageStatus.map((item) => <option key={item} value={item}>{item === "Precisa de ação" ? "Status: Precisa de ação" : item === "Todos" ? "Status: Todos" : item}</option>)}</select></label>
             <label className={styles.inlineFilter}><span className={styles.srOnly}>Renovação</span><select value={renewalFilter} onChange={(event) => { setPage(1); setRenewalFilter(event.target.value as RenewalFilter); }}><option value="Todas">Renovação: Todas</option><option>Pendente</option><option>Renovado</option><option>Não se aplica</option></select></label>
             <label className={styles.inlineFilter}><span className={styles.srOnly}>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Plano: Todos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
-            <FilterPopover label={dueFrom || dueTo ? "Vencimento: período" : "Vencimento: Todos"} active={Boolean(dueFrom || dueTo || dueDay)}>
-              <div className={styles.dateFilters}><label>De<input type="date" value={dueFrom} onChange={(event) => { setPage(1); setDueFrom(event.target.value); }} /></label><label>Até<input type="date" value={dueTo} onChange={(event) => { setPage(1); setDueTo(event.target.value); }} /></label><button onClick={() => { setPage(1); setDueFrom(""); setDueTo(""); setDueDay(""); }}>Todo período</button></div>
+            <FilterPopover label={dueDay ? `Vencimento: dia ${dueDay}` : dueFrom || dueTo ? "Vencimento: período" : "Vencimento: Todos"} active={Boolean(dueFrom || dueTo || dueDay)}>
+              <div className={styles.dateFilterContent}>
+                <div className={styles.dayOptions}><button type="button" className={!dueDay ? styles.daySelected : ""} onClick={() => { setPage(1); setDueDay(""); }}>Todos os dias</button>{Array.from({ length: 31 }, (_, index) => index + 1).map((day) => <button type="button" key={day} className={dueDay === String(day) ? styles.daySelected : ""} onClick={() => { setPage(1); setDueDay(String(day)); }}>{day}</button>)}</div>
+                <div className={styles.dateFilters}><label>De<input type="date" value={dueFrom} onChange={(event) => { setPage(1); setDueFrom(event.target.value); }} /></label><label>Até<input type="date" value={dueTo} onChange={(event) => { setPage(1); setDueTo(event.target.value); }} /></label><button onClick={() => { setPage(1); setDueFrom(""); setDueTo(""); setDueDay(""); }}>Todo período</button></div>
+              </div>
             </FilterPopover>
             <label className={styles.inlineFilter}><span className={styles.srOnly}>Financeiro</span><select value={financialStatus} onChange={(event) => { setPage(1); setFinancialStatus(event.target.value); }}><option value="Todas">Financeiro: Todas</option><option value="Com saldo">Com saldo</option><option value="Parcial">Parcial</option><option value="Quitada">Quitada</option><option value="Sem recebimento">Sem recebimento</option></select></label>
             <button className={`${styles.clearButton} button secondary small`} onClick={clearFilters} disabled={tab === "Todos" && !query && !hasExtraFilters}>Limpar</button>
+            <button className={`button primary ${styles.mobileApply}`} type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }}>Aplicar filtros</button>
+              </div>
+            </details>
+            <details className={styles.sortSheet} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; } }}>
+              <summary>Ordenar</summary>
+              <button className={styles.filterBackdrop} aria-label="Fechar ordenação" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }} />
+              <div className={styles.sortSheetBody}>
+                <label className={styles.inlineFilter}><span>Ordenar por</span><select aria-label="Ordenar cobranças por" value={sort} onChange={(event) => { setPage(1); setSort(event.target.value as ChargeSort); }}><option value="cliente">Cliente</option><option value="vencimento">Vencimento</option><option value="status">Status</option><option value="valor">Valor</option><option value="recebido">Recebido</option><option value="saldo">Saldo</option></select></label>
+                <label className={styles.inlineFilter}><span>Direção</span><select aria-label="Direção da ordenação" value={direction} onChange={(event) => { setPage(1); setDirection(event.target.value as "asc" | "desc"); }}><option value="asc">Crescente</option><option value="desc">Decrescente</option></select></label>
+                <button className="button primary" type="button" onClick={(event) => { const sheet = event.currentTarget.closest("details"); if (sheet) sheet.open = false; }}>Aplicar ordenação</button>
+              </div>
+            </details>
           </div>
 
           <div className={styles.resultMeta}><span>{total} cobrança(s)</span><span>Página {page} de {totalPages}</span></div>
