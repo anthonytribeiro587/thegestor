@@ -14,7 +14,10 @@ import { createClient } from "@/lib/supabase/client";
 import type { ClientStatus } from "@/lib/types";
 import styles from "./clientes.module.css";
 
-type Filter = "Todos" | "Ativos" | "Vencidos" | "Cancelados" | "Revisar ciclos";
+type Filter = "Todos" | "Vencidos" | "Revisar ciclos";
+type ClientStatusFilter = "Todos" | "Ativos" | "Cancelados";
+type CreditFilter = "Todos" | "Com créditos previstos" | "Sem créditos previstos";
+type PlanOption = { id: string; nome: string };
 type ActionMode = "view" | "edit";
 type DayFilter = "all" | number;
 
@@ -58,6 +61,13 @@ export default function ClientsPage() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("Todos");
+  const [statusFilter, setStatusFilter] = useState<ClientStatusFilter>("Todos");
+  const [planId, setPlanId] = useState("");
+  const [overdueFilter, setOverdueFilter] = useState("Todos");
+  const [creditFilter, setCreditFilter] = useState<CreditFilter>("Todos");
+  const [plans, setPlans] = useState<PlanOption[]>([]);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [filtersReady, setFiltersReady] = useState(false);
   const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [clients, setClients] = useState<UiClient[]>([]);
   const [total, setTotal] = useState(0);
@@ -68,6 +78,54 @@ export default function ClientsPage() {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("status");
+    if (status === "ativo" || status === "Ativos") setStatusFilter("Ativos");
+    else if (status === "cancelado" || status === "Cancelados") setStatusFilter("Cancelados");
+    else if (status === "atrasado" || status === "Vencidos") setFilter("Vencidos");
+    else if (status === "revisar-ciclo" || status === "Revisar ciclos") setFilter("Revisar ciclos");
+    setQuery(params.get("busca") ?? "");
+    setPlanId(params.get("plano") ?? "");
+    const parsedDay = Number(params.get("dia"));
+    setDayFilter(Number.isInteger(parsedDay) && parsedDay >= 1 && parsedDay <= 31 ? parsedDay : "all");
+    setOverdueFilter(["Sim", "Não"].includes(params.get("atraso") ?? "") ? params.get("atraso")! : "Todos");
+    const credits = params.get("creditos");
+    setCreditFilter(credits === "Com créditos previstos" || credits === "Sem créditos previstos" ? credits : "Todos");
+    const parsedPage = Number(params.get("page"));
+    setPage(Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1);
+    setFiltersReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!filtersReady) return;
+    const params = new URLSearchParams();
+    const status = filter === "Vencidos" ? "atrasado" : filter === "Revisar ciclos" ? "revisar-ciclo" : statusFilter === "Ativos" ? "ativo" : statusFilter === "Cancelados" ? "cancelado" : "";
+    if (status) params.set("status", status);
+    if (query.trim()) params.set("busca", query.trim());
+    if (planId) params.set("plano", planId);
+    if (dayFilter !== "all") params.set("dia", String(dayFilter));
+    if (overdueFilter !== "Todos") params.set("atraso", overdueFilter);
+    if (creditFilter !== "Todos") params.set("creditos", creditFilter);
+    if (page > 1) params.set("page", String(page));
+    const nextUrl = `${window.location.pathname}${params.size ? `?${params}` : ""}${window.location.hash}`;
+    window.history.replaceState(null, "", nextUrl);
+  }, [filtersReady, filter, statusFilter, query, planId, dayFilter, overdueFilter, creditFilter, page]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    let active = true;
+    const loadPlans = async () => {
+      const { data, error: plansError } = await createClient().from("planos").select("id,nome").eq("empresa_id", empresaId).order("nome");
+      if (!active) return;
+      if (plansError) setPlanError("Não foi possível carregar a lista de planos.");
+      else { setPlans((data ?? []) as PlanOption[]); setPlanError(null); }
+    };
+    void loadPlans();
+    return () => { active = false; };
+  }, [empresaId]);
 
   const loadClients = useCallback(async (targetPage = 1) => {
     setLoading(true);
@@ -84,11 +142,15 @@ export default function ClientsPage() {
       setEmpresaId(membership.empresa_id);
 
       const today = todayInSaoPaulo();
-      const { data, error: clientsError } = await supabase.rpc("buscar_clientes_paginados", {
+      const { data, error: clientsError } = await supabase.rpc("buscar_clientes_paginados_com_filtros", {
         p_empresa_id: membership.empresa_id,
         p_hoje: today,
         p_busca: query.trim(),
         p_filtro: filter,
+        p_status: statusFilter,
+        p_plano_id: planId || null,
+        p_com_atraso: overdueFilter === "Todos" ? null : overdueFilter === "Sim",
+        p_creditos_previstos: creditFilter,
         p_dia: dayFilter === "all" ? null : dayFilter,
         p_offset: (targetPage - 1) * PAGE_SIZE,
         p_limite: PAGE_SIZE,
@@ -121,16 +183,21 @@ export default function ClientsPage() {
     } finally {
       setLoading(false);
     }
-  }, [query, filter, dayFilter]);
+  }, [query, filter, statusFilter, dayFilter, planId, overdueFilter, creditFilter]);
 
   useEffect(() => {
+    if (!filtersReady) return;
     const timeout = window.setTimeout(() => { void loadClients(page); }, query ? 250 : 0);
     return () => window.clearTimeout(timeout);
-  }, [loadClients, page, query]);
+  }, [loadClients, page, query, filtersReady]);
 
   useEffect(() => {
     if (window.location.hash === "#revisao-ciclos") setFilter("Revisar ciclos");
   }, []);
+
+  useEffect(() => {
+    if (!loading && page > totalPages) setPage(totalPages);
+  }, [loading, page, totalPages]);
 
   function openClient(clientId: string, mode: ActionMode) {
     setSelectedClientId(clientId);
@@ -149,13 +216,17 @@ export default function ClientsPage() {
     return [...grouped.entries()].sort(([a], [b]) => a - b);
   }, [visibleClients]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const hasExtraFilters = Boolean(planId || overdueFilter !== "Todos" || creditFilter !== "Todos");
+  const hasActiveFilters = Boolean(query.trim() || filter !== "Todos" || statusFilter !== "Todos" || hasExtraFilters || dayFilter !== "all");
+  const clearFilters = () => {
+    setPage(1); setQuery(""); setFilter("Todos"); setStatusFilter("Todos"); setPlanId(""); setDayFilter("all"); setOverdueFilter("Todos"); setCreditFilter("Todos");
+  };
 
   return (
     <AppShell>
       <PageHeader
         title="Clientes"
-        subtitle="Organize a base pelo dia de vencimento e acompanhe renovações"
+        subtitle="Clientes, ciclos e créditos"
         action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button className="button secondary" onClick={() => setImportOpen(true)} disabled={!empresaId}><Upload size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />Sincronizar planilha</button><button className="button primary" onClick={() => setDrawerOpen(true)} disabled={!empresaId}><Plus size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Novo cliente</button></div>}
       />
 
@@ -168,10 +239,21 @@ export default function ClientsPage() {
 
       <section className={styles.dayPanel}>
         <div className={styles.dayPanelHead}>
-          <div><h2>Vencimentos por dia</h2><p>Mesma lógica da sua planilha: escolha um dia para focar somente nos clientes daquele vencimento.</p></div>
-          <div className="toolbar-filters">{(["Todos", "Ativos", "Vencidos", "Cancelados", "Revisar ciclos"] as Filter[]).map((item) => <button key={item} onClick={() => { setPage(1); setFilter(item); }} className={`filter-chip ${filter === item ? "active" : ""}`}>{item}</button>)}</div>
+          <div><h2>Vencimentos por dia</h2></div>
+          <div className={styles.clientFilters}>
+            <label className={styles.filterField}><span>Status</span><select value={statusFilter} onChange={(event) => { setPage(1); setFilter("Todos"); setStatusFilter(event.target.value as ClientStatusFilter); }}><option>Todos</option><option>Ativos</option><option>Cancelados</option></select></label>
+            <button className={`filter-chip ${filter === "Vencidos" ? "active" : ""}`} onClick={() => { setPage(1); setFilter(filter === "Vencidos" ? "Todos" : "Vencidos"); }}>Com pagamento vencido</button>
+            <button className={`filter-chip ${filter === "Revisar ciclos" ? "active" : ""}`} onClick={() => { setPage(1); setFilter(filter === "Revisar ciclos" ? "Todos" : "Revisar ciclos"); }}>Revisar ciclo</button>
+            <details className={styles.moreFilters}><summary>Mais filtros{hasExtraFilters ? <span className={styles.activeDot} aria-label="filtros ativos" /> : null}</summary><div className={styles.extraFilters}>
+              <label className={styles.filterField}><span>Plano</span><select value={planId} onChange={(event) => { setPage(1); setPlanId(event.target.value); }}><option value="">Todos os planos</option>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.nome}</option>)}</select></label>
+              <label className={styles.filterField}><span>Pagamento vencido</span><select value={overdueFilter} onChange={(event) => { setPage(1); setOverdueFilter(event.target.value); }}><option>Todos</option><option>Sim</option><option>Não</option></select></label>
+              <label className={styles.filterField}><span>Créditos previstos</span><select value={creditFilter} onChange={(event) => { setPage(1); setCreditFilter(event.target.value as CreditFilter); }}><option>Todos</option><option>Com créditos previstos</option><option>Sem créditos previstos</option></select></label>
+            </div></details>
+            <button className="button secondary small" onClick={clearFilters} disabled={statusFilter === "Todos" && filter === "Todos" && !query && !hasExtraFilters && dayFilter === "all"}>Limpar filtros</button>
+            {planError ? <span className={styles.filterError} role="status">{planError}</span> : null}
+          </div>
         </div>
-        <div className={styles.dayNav}>
+        <div className={styles.dayNav} aria-label="Filtrar por dia de vencimento">
           <button className={`${styles.dayButton} ${styles.allButton} ${dayFilter === "all" ? styles.dayButtonActive : ""}`} onClick={() => { setPage(1); setDayFilter("all"); }}><b>Todos</b><small>{filteredTotal}</small></button>
           {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => {
             const count = Number(dayCounts[String(day)] ?? 0);
@@ -182,13 +264,13 @@ export default function ClientsPage() {
 
       <section className="card" style={{ marginBottom: 14 }}>
         <div className="toolbar">
-          <label className="toolbar-search"><Search size={16} /><input value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." /></label>
+          <label className="toolbar-search"><Search size={16} /><input aria-label="Buscar por nome, telefone ou e-mail" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Buscar cliente..." /></label>
           <span style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 11 }}>{total} cliente(s) · página {page} de {totalPages}</span>
         </div>
       </section>
 
       {error ? <div className="card"><div className="empty-note">{error} <button className="text-link" onClick={() => void loadClients()}>Tentar novamente</button></div></div> : null}
-      {loading ? <div className="card"><div className="empty-note">Carregando clientes...</div></div> : null}
+      {loading ? <div className="card"><div className={styles.loadingRows} aria-label="Carregando clientes" aria-busy="true">{Array.from({ length: 6 }, (_, index) => <span key={index} />)}</div></div> : null}
 
       {!loading && !error ? (
         <div className={styles.listPanel}>
@@ -205,7 +287,7 @@ export default function ClientsPage() {
                 <div className={styles.clientHeader}><span>Cliente</span><span>Plano</span><span>Créditos no mês</span><span>Ciclo</span><span>Status</span><span style={{ textAlign: "right" }}>Ações</span></div>
                 {group.map((client) => (
                   <div className={styles.clientRow} key={client.id}>
-                    <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>Último pagamento: {client.lastPayment}</small></div></div>
+                    <div className={styles.clientMain}><span className="mini-avatar">{client.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div className={styles.clientText}><b>{client.name}</b><small>{client.plan} · Pagamento: {client.lastPayment}</small></div></div>
                     <span>{client.plan}</span>
                     <div className={styles.credits}><span className={styles.creditUsed}>{client.creditsUsed} usado(s)</span><span className={styles.creditExpected}>{client.creditsExpected} previsto(s)</span></div>
                     <span title={client.cycleNeedsReview ? "Ciclo concluído e pago. Confirme se o cliente quer renovar mensal ou trimestral." : undefined} style={client.cycleNeedsReview ? { color: "var(--orange)", fontWeight: 700 } : undefined}>{client.cycleNeedsReview ? "Renovar · " : ""}{client.cycle}</span>
@@ -215,7 +297,7 @@ export default function ClientsPage() {
                 ))}
               </section>
             );
-          }) : <div className={styles.dayGroup}><div className={styles.empty}>{query || filter !== "Todos" || dayFilter !== "all" ? "Nenhum cliente encontrado para este filtro." : "Nenhum cliente cadastrado ainda."}</div></div>}
+          }) : <div className={styles.dayGroup}><div className={styles.empty}>{hasActiveFilters ? "Nenhum cliente encontrado para estes filtros." : "Nenhum cliente cadastrado ainda."}</div></div>}
           {total > 0 ? <div className={styles.pagination}>
             <button className="button secondary small" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</button>
             <span>Página {page} de {totalPages}</span>

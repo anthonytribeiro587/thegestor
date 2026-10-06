@@ -1,0 +1,37 @@
+{
+  "inspectedAt": "2026-10-06",
+  "intent": "IMPROVE",
+  "posture": "EVOLVE",
+  "creativity": "low",
+  "designSystem": {
+    "status": "resolved",
+    "provider": "TheGestor local CSS and component system",
+    "confidence": 0.96,
+    "sources": [
+      "src/app/globals.css",
+      "src/app/quality.css",
+      "src/components/app-shell.tsx",
+      "src/components/page-header.tsx",
+      "src/components/stat-card.tsx"
+    ],
+    "evidence": [
+      "Existing navy and blue tokens, light cards, compact table patterns, and local components are already used across the product.",
+      "The user explicitly requested preserving the existing visual identity and avoiding a redesign."
+    ],
+    "resolution": "The discovery script reported ambiguous local component imports; resolved to the existing local CSS/component system under the user's explicit preserve instruction. No external component library introduced."
+  },
+  "designProfile": {
+    "identity": "Corporate SaaS/ERP, dark navy navigation, blue actions, light cards",
+    "tokens": {
+      "navy": "#06254c",
+      "blue": "#1263f3",
+      "card": "#ffffff",
+      "background": "#f6f8fb"
+    },
+    "density": "Compact desktop layouts; comfortable touch targets on mobile"
+  },
+  "baselineCapture": {
+    "status": "unavailable",
+    "reason": "Playwright is not installed in the workspace; the visual QA harness emitted ENVIRONMENT_LIMITATION before edits. No browser binary was available for a replacement capture."
+  }
+}
