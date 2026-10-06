@@ -50,3 +50,11 @@
 - Data: migration incremental `20261006180000_operational_sort_and_renewal_filter.sql` cria RPCs ordenadas sem alterar dados/RPCs legadas; renovação vem de tarefa `renovar` pendente/concluída ou de cobrança posterior da assinatura. PgTAP cobre sort, busca/paginação combinadas, renovação, tenant e operador.
 - Verified: `npm run lint` passou; `npm test` passou (29/29); `npm run build` passou (26 páginas); `git diff --check` passou.
 - Limits/next: ambiente sem `psql`, Supabase CLI funcional, Playwright ou Chromium; executar `supabase/tests/operational_sort_and_renewal.test.sql` depois de aplicar a migration em staging e validar 390/768/1024/1280/1440, menu, popovers, drawers e modal de exclusão em Chromium com ADMIN/OPERATOR.
+
+## 2026-10-06 — Auditoria QA final em Chromium
+
+- Scope: testar como usuário o Preview mais recente de `feat/finalizacao-saas` e as páginas públicas nos viewports solicitados.
+- Changed: relatório em `DEV/QA-FINAL.md`; 12 screenshots em `.qa/screenshots/`, ignoradas pelo Git/build. Cor muted global ajustada de `#6b7a91` para `#64748b` após contraste 4,36:1 em texto auxiliar/tab auth.
+- Verified: Chromium 153 / Playwright 1.63; Preview base commit `c572face`; 12 páginas/viewports passaram sem overflow, erro de console/hydration ou request falha. Após correção, build local repetiu 12 combinações e o contraste subiu a 4,76:1. Interações públicas, validação HTML e foco passaram. Lint, Vitest 29/29, build 26 rotas e diff check passaram.
+- Limits: áreas autenticadas bloqueadas sem usuário QA ADMIN/OPERATOR; migrations/PgTAP ainda dependem de staging. `next dev` mostrou mismatch de `caret-color` em cinco navegações, ausente no Preview e build local de produção; acompanhar se reaparecer fora de dev. Novo Preview é necessário para verificar o CSS corrigido no deployment.
+- Next: obter contas isoladas de QA e validar páginas operacionais, isolamento por perfil e migrations em staging antes de aprovar para main.

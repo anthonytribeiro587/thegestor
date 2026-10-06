@@ -6,7 +6,7 @@ Transformar o TheGestor de uma aplicação operacional funcional em um SaaS repl
 
 ## Current Focus
 
-Concluir a landing pública de vendas e o acabamento de login/cadastro, clientes e cobranças, preservando identidade, isolamento multiempresa, fluxos existentes e paginação server-side. A validação da migration em PostgreSQL e a revisão visual em Chromium/Preview seguem pendentes.
+Concluir a landing pública de vendas e o acabamento de login/cadastro, clientes e cobranças, preservando identidade, isolamento multiempresa, fluxos existentes e paginação server-side. QA público em Chromium/Preview foi concluído; continuam pendentes validação das migrations em PostgreSQL e QA autenticado com usuários ADMIN/OPERATOR.
 
 ## In Scope
 

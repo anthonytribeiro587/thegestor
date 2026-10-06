@@ -1,5 +1,17 @@
 # Verify
 
+## Auditoria QA final em Chromium — 2026-10-06
+
+- Preview Vercel da branch/commit `feat/finalizacao-saas` / `c572facea238b8f48fc83e8a2d389b92fbb82480` acessado com Chromium for Testing 153.0.8010.12 e Playwright 1.63.0.
+- `/`, `/login` e `/cadastro` testados em 1440x900, 1280x800, 768x1024 e 390x844: 12/12 respostas 200; sem overflow horizontal, console error, hydration error/warning ou request falha.
+- Navegação das âncoras/CTAs, menu móvel, rotas login/cadastro, labels, validação HTML e foco de teclado exercitados. Capturas: `.qa/screenshots/` (12 PNGs, diretório ignorado).
+- Contraste auxiliar/tab de auth corrigido (`--muted: #64748b`) após medir 4,36:1; Chromium no build local posterior mediu 4,76:1. Reteste local nas 12 combinações sem erro de console, rede ou overflow.
+- `npm run lint` — passou; `npm test` — 29/29; `npm run build` — passou (26 rotas); `git diff --check` — passou.
+- WARN: `next dev` apresentou hydration mismatch relacionado a atributo inline `caret-color` em cinco navegações. Não consta no HTML/código e não reproduziu no Preview nem no build local de produção.
+- BLOCKED: sem credenciais de QA, páginas operacionais e verificações ADMIN/OPERATOR não foram abertas; nenhuma conta ou dado foi criado/alterado. PgTAP/migrations seguem pendentes de staging.
+- WARN: deployment Preview ainda antecede o ajuste de contraste; confirmar no próximo Preview. O CSS corrigido foi verificado no build local.
+- Decisão: NOT READY FOR MAIN até concluir QA autenticado, validar banco em staging e conferir o CSS no próximo Preview. Detalhes em `DEV/QA-FINAL.md`.
+
 ## Exclusão segura de clientes — 2026-10-06
 
 ### Checks executados

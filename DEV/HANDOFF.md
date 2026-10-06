@@ -5,7 +5,7 @@
 - Updated: 2026-10-06
 - Branch: `feat/finalizacao-saas`
 - Project: TheGestor
-- State: landing pública, ajustes auth, filtros/tabelas compactos, ordenação server-side e estado de renovação derivados implementados na branch; migration, PgTAP e Chromium/Preview pendentes.
+- State: landing pública, filtros/tabelas e ordenação implementados; QA público Chromium concluído no Preview atual. QA autenticado ADMIN/OPERATOR e migrations/PgTAP em staging continuam pendentes.
 - Orchestration: Orquestrador Maestro V1 beta
 - Read order: `INDEX.md` -> `HANDOFF.md` -> `CONTEXT.md` -> `SPECS/ACTIVE.md`
 - Verification source: `VERIFY.md`
@@ -38,12 +38,14 @@
 - Landing/filtros/ordenação: lint passou; Vitest 29/29; build passou com 26 rotas; diff check passou.
 - Migrations não foram aplicadas: ambiente sem acesso/ferramentas de banco local; precisam de staging/produção e revisão do plano de implantação.
 - Migration `20261006170000_secure_client_deletion.sql` corrigida e pgTAP ampliado para 19 assertions; Supabase CLI/psql não disponíveis aqui, portanto executar os testes em banco descartável local ou staging antes da implantação.
-- Captura visual não executada: Playwright e navegador não estão disponíveis neste ambiente.
-- Visual QA harness retornou `ENVIRONMENT_LIMITATION` por ausência de Playwright; Supabase CLI via npx falhou com versão ausente e `psql` não existe.
-- UX/UI final: lint, 29 testes, build com 26 rotas e diff check passaram; Preview continua pendente para 390/768/1280/1440 px e drawers.
+- QA Chromium público: Preview do commit `c572face` passou em `/`, `/login`, `/cadastro` nos viewports 390/768/1280/1440; build local após correção de contraste passou novamente. 12 screenshots em `.qa/screenshots/`.
+- Contraste muted ajustado para `#64748b`; medição de texto auxiliar/tab auth passou de 4,36:1 para 4,76:1. Correção local aguarda um novo Preview.
+- QA autenticado não executado: nenhuma conta de teste disponível; validar páginas operacionais, drawers, automações, integrações e separação ADMIN/OPERATOR com dados isolados.
+- `next dev` reportou hydration mismatch de `caret-color` em alguns carregamentos; não reproduziu no Preview nem em produção local. Registro em `DEV/QA-FINAL.md`.
+- Gates após QA: lint, 29 testes, build de 26 rotas e diff check passaram.
 - Credenciais, crons, webhook e envio Evolution reais precisam de validação no ambiente comercial.
 - Branch obrigatória `feat/finalizacao-saas`; nenhuma alteração em `main`, sem push ou merge.
 
 ## Próximo contexto
 
-Aplicar migrations pendentes em staging e executar `supabase/tests/excluir_cliente.test.sql` e `supabase/tests/operational_sort_and_renewal.test.sql`. Conferir Preview/Chromium em 390/768/1024/1280/1440 px, incluindo landing/login/cadastro, popovers, tabelas e drawers; validar com ADMIN e OPERATOR que isolamento e dados financeiros permanecem protegidos.
+Aplicar migrations pendentes em staging e executar `supabase/tests/excluir_cliente.test.sql` e `supabase/tests/operational_sort_and_renewal.test.sql`. Obter usuários isolados de QA ADMIN/OPERATOR e completar os fluxos autenticados descritos em `DEV/QA-FINAL.md`, preservando isolamento e proteção financeira.
