@@ -6,12 +6,13 @@ Transformar o TheGestor de uma aplicação operacional funcional em um SaaS repl
 
 ## Current Focus
 
-Consolidar a base do produto e priorizar funcionalidades que removam dependência de operação manual antes de adicionar integrações financeiras mais complexas.
+Consolidar a base do produto e priorizar funcionalidades que removam dependência de operação manual antes de adicionar integrações financeiras mais complexas. Nesta tarefa, completar a exclusão segura de clientes.
 
 ## In Scope
 
 - UX/UI e fluxos essenciais;
 - CRUD completo de clientes;
+- exclusão definitiva de clientes sem histórico financeiro, com RPC ADMIN-only, auditoria e preservação/cancelamento dos clientes com recebimentos;
 - planos/preços configuráveis;
 - paginação;
 - automações de cobrança;
@@ -29,6 +30,8 @@ Consolidar a base do produto e priorizar funcionalidades que removam dependênci
 ## Acceptance
 
 - fluxo implementado e verificável;
+- cliente com histórico financeiro permanece preservado e pode ser cancelado;
+- exclusão sem recebimentos confirma tenant/ADMIN, limpa dependências e mantém auditoria;
 - isolamento multiempresa preservado;
 - papéis preservados;
 - testes aplicáveis passando;

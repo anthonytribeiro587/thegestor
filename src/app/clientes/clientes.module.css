@@ -319,6 +319,9 @@
   }
 }
 
+.toast { position: fixed; z-index: 110; right: 24px; bottom: 24px; padding: 13px 18px; border-radius: 9px; background: #173f31; color: #fff; box-shadow: 0 12px 32px rgba(6, 26, 19, .2); font-size: 13px; font-weight: 650; }
+@media (max-width: 620px) { .toast { left: 12px; right: 12px; bottom: 16px; text-align: center; } }
+
 .clientFilters {
   display: flex;
   align-items: flex-end;

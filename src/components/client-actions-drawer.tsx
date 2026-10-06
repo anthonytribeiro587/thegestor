@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, RotateCcw, UserX, X } from "lucide-react";
+import { AlertTriangle, Pencil, RotateCcw, Trash2, UserX, X } from "lucide-react";
 import { formatDateBR } from "@/lib/billing";
 import { currency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ type ClientRow = {
   telefone: string | null;
   email: string | null;
   status: string;
+  origem: string;
   observacoes_operacionais: string | null;
   criado_em: string;
 };
@@ -46,7 +47,11 @@ type Detail = {
   client: ClientRow;
   subscription: SubscriptionRow;
   charges: ChargeRow[];
+  chargeCount: number;
+  paymentCount: number;
 };
+
+type DeleteResult = { deleted: boolean; reason: string | null; cobrancas: number; pagamentos: number };
 
 type PlanOption = { id: string; nome: string; ativo: boolean; periodicidade: string; valor: number | null };
 type PlanPriceOption = { valor: number; vigente_ate: string | null; vigente_desde_em: string; criado_em: string };
@@ -114,6 +119,7 @@ export function ClientActionsDrawer({
   empresaId,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   open: boolean;
   mode: Mode;
@@ -121,6 +127,7 @@ export function ClientActionsDrawer({
   empresaId: string | null;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
+  onDeleted: () => void;
 }) {
   const [mode, setMode] = useState<Mode>(requestedMode);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -129,18 +136,22 @@ export function ClientActionsDrawer({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [financialHistory, setFinancialHistory] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!open || !clientId || !empresaId) return;
     setLoading(true);
     setError(null);
+    setIsAdmin(false);
 
     try {
       const supabase = createClient();
-      const [clientResult, subscriptionResult, chargesResult, plansResult] = await Promise.all([
+      const [clientResult, subscriptionResult, chargesResult, chargeCountResult, membershipResult, plansResult] = await Promise.all([
         supabase
           .from("clientes")
-          .select("id,nome,telefone,email,status,observacoes_operacionais,criado_em")
+          .select("id,nome,telefone,email,status,origem,observacoes_operacionais,criado_em")
           .eq("empresa_id", empresaId)
           .eq("id", clientId)
           .single(),
@@ -159,6 +170,8 @@ export function ClientActionsDrawer({
           .eq("cliente_id", clientId)
           .order("competencia", { ascending: false })
           .limit(12),
+        supabase.from("cobrancas").select("id", { count: "exact", head: true }).eq("empresa_id", empresaId).eq("cliente_id", clientId),
+        supabase.from("usuarios_empresa").select("papel").eq("empresa_id", empresaId).eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "").eq("ativo", true).maybeSingle(),
         supabase.from("planos")
           .select("id,nome,ativo,periodicidade,planos_precos(valor,vigente_ate,vigente_desde_em,criado_em)")
           .is("planos_precos.vigente_ate", null)
@@ -168,7 +181,19 @@ export function ClientActionsDrawer({
       if (clientResult.error) throw clientResult.error;
       if (subscriptionResult.error) throw subscriptionResult.error;
       if (chargesResult.error) throw chargesResult.error;
+      if (chargeCountResult.error) throw chargeCountResult.error;
+      if (membershipResult.error) throw membershipResult.error;
       if (plansResult.error) throw plansResult.error;
+      const admin = membershipResult.data?.papel === "admin";
+      setIsAdmin(admin);
+      let paymentCount = 0;
+      if (admin) {
+        const { count, error: paymentCountError } = await supabase.from("pagamentos")
+          .select("id,cobrancas!inner(cliente_id)", { count: "exact", head: true })
+          .eq("empresa_id", empresaId).eq("cobrancas.cliente_id", clientId);
+        if (paymentCountError) throw paymentCountError;
+        paymentCount = count ?? 0;
+      }
       if (!subscriptionResult.data) throw new Error("Este cliente não possui assinatura cadastrada.");
 
       const planOptions = ((plansResult.data ?? []) as PlanQueryRow[]).map((plan) => {
@@ -186,6 +211,8 @@ export function ClientActionsDrawer({
         client: clientResult.data as ClientRow,
         subscription: subscriptionResult.data as SubscriptionRow,
         charges: (chargesResult.data ?? []) as ChargeRow[],
+        chargeCount: chargeCountResult.count ?? 0,
+        paymentCount,
       };
       setDetail(nextDetail);
       setForm(initialForm(nextDetail));
@@ -334,8 +361,62 @@ export function ClientActionsDrawer({
     }
   }
 
+  async function deleteClient() {
+    if (!detail || !empresaId || saving || !isAdmin) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { data, error: rpcError } = await createClient().rpc("excluir_cliente", {
+        p_empresa_id: empresaId,
+        p_cliente_id: detail.client.id,
+        p_motivo: detail.client.origem,
+      });
+      if (rpcError) throw rpcError;
+      const result = data as DeleteResult;
+      if (!result.deleted && result.reason === "financial_history") {
+        setFinancialHistory(true);
+        return;
+      }
+      if (!result.deleted) throw new Error("Este cliente não está mais disponível para exclusão.");
+      setDeleteOpen(false);
+      setDetail(null);
+      onClose();
+      onDeleted();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível excluir o cliente.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function cancelFromDeleteDialog() {
+    if (!detail || saving) return;
+    setDeleteOpen(false);
+    if (detail.client.status !== "cancelado") {
+      setSaving(true);
+      setError(null);
+      try {
+        const { error: rpcError } = await createClient().rpc("alterar_status_cliente", {
+          p_empresa_id: empresaId,
+          p_cliente_id: detail.client.id,
+          p_assinatura_id: detail.subscription.id,
+          p_status: "cancelado",
+        });
+        if (rpcError) throw rpcError;
+        await onSaved();
+        await loadDetail();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Não foi possível cancelar o cliente.");
+      } finally {
+        setSaving(false);
+      }
+    }
+  }
+
   function close() {
     if (saving) return;
+    setDeleteOpen(false);
+    setFinancialHistory(false);
     setDetail(null);
     setForm(null);
     setError(null);
@@ -429,8 +510,27 @@ export function ClientActionsDrawer({
                 <button className={`button ${styles.danger}`} type="button" disabled={saving} onClick={() => void changeStatus("cancelado")}><UserX size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Cancelar cliente</button>
               )}
             </div>
+            {isAdmin ? <section className={styles.dangerZone}>
+              <h3>Área de perigo</h3>
+              <p>A exclusão definitiva remove os dados operacionais deste cliente e só é permitida sem recebimentos registrados.</p>
+              <button className={`button ${styles.danger}`} type="button" disabled={saving} onClick={() => { setFinancialHistory(false); setDeleteOpen(true); }}><Trash2 size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />Excluir cliente</button>
+            </section> : null}
           </>
         ) : null}
+
+        {deleteOpen && detail ? <div className={styles.modalBackdrop} role="presentation">
+          <section className={styles.confirmModal} role="dialog" aria-modal="true" aria-labelledby="delete-client-title">
+            <div className={styles.modalIcon}><AlertTriangle size={20} /></div>
+            <h3 id="delete-client-title">Excluir cliente?</h3>
+            <p><strong>{detail.client.nome}</strong> possui {detail.chargeCount} cobrança(s) e {detail.paymentCount} pagamento(s) registrado(s).</p>
+            <p>Serão removidos o cliente, assinaturas, cobranças, tentativas de pagamento, tarefas operacionais e mensagens relacionadas. Esta ação não pode ser desfeita.</p>
+            {financialHistory ? <div className={styles.historyWarning} role="alert">Este cliente possui histórico financeiro e não pode ser excluído definitivamente. Você pode cancelá-lo para preservar o histórico.</div> : null}
+            <div className={styles.modalActions}>
+              <button className="button secondary" type="button" disabled={saving} onClick={() => { setDeleteOpen(false); setFinancialHistory(false); }}>Cancelar</button>
+              {financialHistory ? <button className="button primary" type="button" disabled={saving} onClick={() => void cancelFromDeleteDialog()}>Cancelar cliente</button> : <button className={`button ${styles.deleteButton}`} type="button" disabled={saving} onClick={() => void deleteClient()}>{saving ? "Excluindo..." : "Excluir cliente"}</button>}
+            </div>
+          </section>
+        </div> : null}
 
         {!loading && detail && form && mode === "edit" ? (
           <form className="form-stack" onSubmit={save}>

@@ -32,5 +32,6 @@
 ## Next Context
 
 - Priorizar funcionalidades que transformem o sistema em produto replicável.
+- Exclusão segura de clientes está implementada no código, mas depende da migration `20261006170000_secure_client_deletion.sql` e validação pgTAP em Supabase local/staging.
 - Evitar customização excessivamente específica de um único cliente.
 - Antes de mexer em banco/RLS, ler migrations e políticas relacionadas.

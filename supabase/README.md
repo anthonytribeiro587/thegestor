@@ -80,3 +80,7 @@ Isso será usado futuramente pelo webhook do Mercado Pago.
 Nunca grave Access Token do Mercado Pago, API Key da Evolution ou `service_role` em tabelas acessíveis pelo navegador.
 
 `integracoes.secret_ref` existe apenas para guardar uma referência a um segredo mantido no servidor/Vault. As credenciais reais serão configuradas no ambiente de backend/Vercel na etapa de integrações.
+
+## Testes de exclusão segura de clientes
+
+`tests/excluir_cliente.test.sql` contém cenários pgTAP para sessão ausente, ADMIN, OPERATOR, empresa diferente, histórico financeiro, dependências, auditoria e repetição. Execute após aplicar as migrations em uma instância Supabase local/staging descartável, usando `supabase test db`. O script abre uma transação e termina com `rollback`; não execute como teste em produção.

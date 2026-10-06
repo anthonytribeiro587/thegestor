@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-10-06 — Corrige exclusão de importações de valor zero
+
+- Scope: corrigir a regra de histórico financeiro em `20261006170000_secure_client_deletion.sql` antes de a migration ser aplicada.
+- Changed: status `pago`/`pago_em` da cobrança só conta quando `valor_original > 0`; `cobrancas_financeiras.valor_pago > 0` e pagamentos confirmados (`pago_em`, `approved`, `pago`, `parcial`) seguem bloqueando. PgTAP agora tem 19 assertions e cobre a exceção R$ 0,00, parcial e aprovado.
+- Verified: `npm run lint`, `npm test` (29/29), `npm run build` (26 páginas), `git diff --check` passaram.
+- Limits: pgTAP não executado porque `psql` e Supabase CLI não estão instalados; nenhuma migration aplicada. Commit corrigido por amend na branch `feat/finalizacao-saas`, sem merge/push.
+
+## 2026-10-06 — Exclusão segura de clientes
+
+- Scope: ADMIN pode excluir clientes importados/duplicados sem recebimentos confirmados; histórico financeiro permanece preservado.
+- Changed: RPC transacional `excluir_cliente` valida sessão, papel e tenant, grava auditoria antes da remoção, limpa cobranças/tentativas/dependências; drawer ganhou confirmação e caminho de cancelamento para histórico financeiro; lista/KPIs atualizam e recuam página vazia com toast. Adicionado teste pgTAP com 15 assertions.
+- Verified: lint passou; Vitest 29/29; build Next passou (26 páginas); `git diff --check` passou.
+- Limits: pgTAP/migration não executados por ausência de `psql`/Supabase CLI e config local; staging necessário.
+- Commit: `07e2a39 feat: adiciona exclusao segura de clientes` na branch `feat/finalizacao-saas`; sem push/merge.
+- Next: executar `supabase/tests/excluir_cliente.test.sql` em banco descartável após aplicar migration; depois revisar visual mobile/desktop.
+
 ## 2026-10-06 — Finalização comercial
 
 - Spec: `DEV/SPECS/ACTIVE.md`

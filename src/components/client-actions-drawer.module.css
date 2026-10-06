@@ -20,4 +20,17 @@
 .history td{font-size:10px;padding:9px 8px;border-bottom:1px solid #eef2f7;white-space:nowrap}
 .history tr:last-child td{border-bottom:0}
 .formFooter{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:6px}
+.dangerZone{margin-top:28px;padding:16px;border:1px solid #f0d5d6;border-radius:11px;background:#fffafb}
+.dangerZone h3{margin:0;font-size:12px;color:#8f3338}
+.dangerZone p{font-size:11px;line-height:1.5;color:#6a5960;margin:7px 0 12px}
+.modalBackdrop{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:18px;background:rgba(5,22,43,.48)}
+.confirmModal{width:min(440px,100%);padding:24px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 22px 70px rgba(4,18,36,.25)}
+.confirmModal h3{margin:12px 0 8px;font-size:18px}
+.confirmModal p{color:#52627a;font-size:12px;line-height:1.55;margin:8px 0}
+.modalIcon{width:40px;height:40px;display:grid;place-items:center;border-radius:50%;color:#a43f44;background:#fff0f0}
+.modalActions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:20px}
+.deleteButton{color:#fff;background:#c8323b;border-color:#c8323b}
+.deleteButton:hover{background:#a9252d}
+.historyWarning{margin-top:14px;padding:12px;border:1px solid #f0d3a5;border-radius:8px;background:#fff8e9;color:#72500d;font-size:12px;line-height:1.5}
 @media(max-width:640px){.drawer{width:100vw}.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.actions,.formFooter{display:grid;grid-template-columns:1fr}.actions button,.formFooter button{width:100%}}
+@media(max-width:480px){.modalActions{display:grid;grid-template-columns:1fr}.modalActions button{width:100%}}

@@ -1,5 +1,21 @@
 # Verify
 
+## Exclusão segura de clientes — 2026-10-06
+
+### Checks executados
+
+- `npm run lint` — passou (`tsc --noEmit`).
+- `npm test` — passou: 29 testes em 7 arquivos.
+- `npm run build` — passou; Next.js compilou e gerou 26 páginas.
+- `git diff --check` — passou.
+- Regressão da cobrança importada R$ 0,00: regra corrigida na migration; caso coberto por teste pgTAP, junto com pagamentos parcial e aprovado.
+- Revisão de migration: função `SECURITY DEFINER` com `search_path` vazio, validação `auth.uid()`/ADMIN, tenant nos filtros, grants restritos e audit log sem FK ao cliente.
+
+### Pendente
+
+- A suíte `supabase/tests/excluir_cliente.test.sql` tem 19 assertions pgTAP, mas não foi executada: `psql`, Supabase CLI e configuração local não estão disponíveis neste ambiente.
+- Aplicar migration e executar os cenários em Supabase local/staging antes da implantação em produção.
+
 ## Finalização comercial — 2026-10-06
 
 ### Checks executados

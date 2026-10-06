@@ -78,6 +78,7 @@ export default function ClientsPage() {
   const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   useEffect(() => {
@@ -199,6 +200,18 @@ export default function ClientsPage() {
     if (!loading && page > totalPages) setPage(totalPages);
   }, [loading, page, totalPages]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 3500);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  async function handleClientDeleted() {
+    const targetPage = clients.length === 1 && page > 1 ? page - 1 : page;
+    await loadClients(targetPage);
+    setToast("Cliente excluído com sucesso.");
+  }
+
   function openClient(clientId: string, mode: ActionMode) {
     setSelectedClientId(clientId);
     setActionMode(mode);
@@ -229,6 +242,7 @@ export default function ClientsPage() {
         subtitle="Clientes, ciclos e créditos"
         action={<div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}><button className="button secondary" onClick={() => setImportOpen(true)} disabled={!empresaId}><Upload size={15} style={{ verticalAlign: "middle", marginRight: 6 }} />Sincronizar planilha</button><button className="button primary" onClick={() => setDrawerOpen(true)} disabled={!empresaId}><Plus size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />Novo cliente</button></div>}
       />
+      {toast ? <div role="status" aria-live="polite" className={styles.toast}>{toast}</div> : null}
 
       <section className="stats-grid">
         <StatCard title="Clientes ativos" value={String(stats.ativos)} helper="Base atual" icon={UserRoundCheck} />
@@ -308,7 +322,7 @@ export default function ClientsPage() {
 
       <ClientDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} empresaId={empresaId} onSaved={loadClients} />
       <ClientImportDrawer open={importOpen} onClose={() => setImportOpen(false)} empresaId={empresaId} onImported={loadClients} />
-      <ClientActionsDrawer open={actionOpen} mode={actionMode} clientId={selectedClientId} empresaId={empresaId} onClose={() => { setActionOpen(false); setSelectedClientId(null); }} onSaved={loadClients} />
+      <ClientActionsDrawer open={actionOpen} mode={actionMode} clientId={selectedClientId} empresaId={empresaId} onClose={() => { setActionOpen(false); setSelectedClientId(null); }} onSaved={loadClients} onDeleted={() => void handleClientDeleted()} />
     </AppShell>
   );
 }
